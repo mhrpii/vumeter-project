@@ -61,6 +61,7 @@ state = {
     "theme_idx": 0,            # COLOR_THEME_NAMES index'i
     "led_theme_idx": 0,        # LED_THEME_NAMES index'i
     "vu_dial_idx": 0,          # VU_DIALS index'i (TAB ile VU Metre modunda)
+    "ch_layout": 1,            # C tusu: kanal dizilimi (0:L+R, 1:L+R', 2:L'+R, 3:L'+R')
     "quit": False,             # tepsi menusunden cikis istegi
 }
 
@@ -901,7 +902,7 @@ def setup_tray():
 
 
 def draw_hint():
-    txt = "1:Spektrum  2:LED  3:LED Nokta  4:VU  5:Olcum  6:Bar  W:Monitor  TAB:Renk/Kadran  Q:Cikis"
+    txt = "1:Spektrum  2:LED  3:LED Nokta  4:VU  5:Olcum  6:Bar  W:Monitor  C:Kanal  TAB:Renk/Kadran  Q:Cikis"
     surf = font_hint.render(txt, True, (120, 120, 130))
     screen.blit(surf, (10, 8))
 
@@ -935,6 +936,10 @@ while running:
                 state["mode"] = "Olcum Paneli"
             elif event.key == pygame.K_6:
                 state["mode"] = "Spektrum 2"
+            elif event.key == pygame.K_c:
+                state["ch_layout"] = (state["ch_layout"] + 1) % 4
+                _names = ("0: L+R", "1: L+R'", "2: L'+R", "3: L'+R'")
+                print(f"Kanal dizilimi -> {_names[state['ch_layout']]}")
             elif event.key == pygame.K_w:
                 # Sistem Monitoru'nu ayri pencerede ac.
                 # .app icinde sys.executable bundle calistirilabiliridir;
@@ -968,9 +973,13 @@ while running:
         except ValueError:
             cava_bars = [0] * NUM_BARS
 
-    # GOZLEMLE dogrulanan duzen: iki yarida da bas SAGDA, tiz SOLDA
-    # (onceki halde bas iki yarinin solundaydi -> iki yari da cevrildi)
-    stereo_bars = cava_bars[:HALF_BARS] + cava_bars[HALF_BARS:HALF_BARS*2][::-1]
+    # Kanal dizilimi C tusuyla canli secilir (varsayilan 1 = L+R')
+    _L = cava_bars[:HALF_BARS]; _R = cava_bars[HALF_BARS:HALF_BARS*2]
+    _lay = state.get("ch_layout", 1)
+    if _lay == 0:   stereo_bars = _L + _R
+    elif _lay == 1: stereo_bars = _L + _R[::-1]
+    elif _lay == 2: stereo_bars = _L[::-1] + _R
+    else:           stereo_bars = _L[::-1] + _R[::-1]
 
     mode = state["mode"]
     if mode == "LED Spektrum":
