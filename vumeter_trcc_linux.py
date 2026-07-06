@@ -64,7 +64,7 @@ def gradient_color(theme_name, ratio):
     return (int(c1[0]+(c2[0]-c1[0])*f), int(c1[1]+(c2[1]-c1[1])*f), int(c1[2]+(c2[2]-c1[2])*f))
 
 
-NUM_BARS = 140
+NUM_BARS = 204   # 140'tan artirildi: daha ince/sik barlar (masaustuyle ayni)
 
 # ==================== DURUM ====================
 _state = {
