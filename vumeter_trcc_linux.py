@@ -150,17 +150,46 @@ class TRCCSender:
 
 
 # ==================== CAVA ====================
-CAVA_SOURCE = "alsa_output.usb-Focusrite_Scarlett_Solo_4th_Gen_S1TTKRP5739DF7-00.HiFi__Line1__sink.monitor"
+# Yedek (bulucu basarisiz olursa): HiFi Line1 monitoru
+CAVA_SOURCE_FALLBACK = "alsa_output.usb-Focusrite_Scarlett_Solo_4th_Gen_S1TTKRP5739DF7-00.HiFi__Line1__sink.monitor"
+
+def _find_scarlett_monitor():
+    """Profil bagimsiz: Scarlett'in AKTIF monitor kaynagini bul.
+    pro-audio -> pro-output-0.monitor, HiFi -> Line1__sink.monitor, vb.
+    Once RUNNING olani, yoksa herhangi Scarlett .monitor, o da yoksa fallback."""
+    try:
+        out = subprocess.run(["pactl", "list", "short", "sources"],
+                             capture_output=True, text=True, timeout=3).stdout
+        cand = []
+        for line in out.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            name = parts[1]
+            if "Scarlett" in name and name.endswith(".monitor"):
+                running = "RUNNING" in line
+                cand.append((running, name))
+        if cand:
+            # RUNNING olanlari one al
+            cand.sort(key=lambda c: (not c[0]))
+            return cand[0][1]
+    except Exception:
+        pass
+    return CAVA_SOURCE_FALLBACK
+
+# Geriye donuk uyumluluk icin: guncel kaynagi dondur
+def _cava_source():
+    return _find_scarlett_monitor()
 
 def _wait_for_source(timeout=90):
-    """Acilis yarisina karsi: Scarlett PipeWire kaynagi gorunene kadar bekle.
-    Kaynak gelirse True, sure dolarsa False (yine de denenir)."""
+    """Acilis yarisina karsi: Scarlett monitor kaynagi gorunene kadar bekle.
+    Profil bagimsiz. Kaynak gelirse True."""
     t0 = time.time()
     while time.time() - t0 < timeout:
         try:
             out = subprocess.run(["pactl", "list", "short", "sources"],
                                  capture_output=True, text=True, timeout=3).stdout
-            if CAVA_SOURCE in out:
+            if "Scarlett" in out and ".monitor" in out:
                 return True
         except Exception:
             pass
@@ -173,7 +202,7 @@ def _wait_for_source(timeout=90):
 def write_cava_config(bars=NUM_BARS, fps=60):
     """PipeWire monitor kaynagi ile cava config yaz."""
     os.makedirs(os.path.dirname(CAVA_CONFIG), exist_ok=True)
-    src = CAVA_SOURCE
+    src = _find_scarlett_monitor()
     with open(CAVA_CONFIG, "w") as f:
         f.write(f"""[general]
 bars = {bars}
