@@ -41,7 +41,7 @@ _HALF_N = NUM_BARS // 2
 
 _state = {"theme_idx": 0, "running": True, "ch_layout": 1,
           "mode": "Spektrum", "led_theme_idx": 0, "vu_dial_idx": 0, "meter_page": 0,
-          "brightness": 100, "brightness_changed": False}
+          "brightness": 100, "brightness_changed": False, "last_sound": 0.0}
 
 LED_THEMES = {
     "Camgobegi": [(10, 90, 70), (40, 200, 190), (120, 255, 235)],
@@ -540,6 +540,23 @@ def _find_scarlett_monitor():
     return CAVA_SOURCE_FALLBACK
 
 
+def _wait_for_source(timeout=90):
+    """Scarlett monitor kaynagi gorunene kadar bekle (profil bagimsiz)."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            out = subprocess.run(["pactl", "list", "short", "sources"],
+                                 capture_output=True, text=True, timeout=3).stdout
+            if "Scarlett" in out and ".monitor" in out:
+                return True
+        except Exception:
+            pass
+        if not _state.get("running", True):
+            return False
+        time.sleep(1)
+    return False
+
+
 def write_cava_config(bars=NUM_BARS, fps=60):
     os.makedirs(os.path.dirname(CAVA_CONFIG), exist_ok=True)
     src = _find_scarlett_monitor()
@@ -562,17 +579,47 @@ ascii_max_range = 255
 
 
 class CavaReader:
+    """Guclendirilmis: profil degisimi + uzun sessizlik + PipeWire kurtarma.
+    Senaryo: muzik uzun sure durunca PipeWire monitor hatti olebiliyor;
+    o zaman cava veri alamaz ve program kapat-ac ile duzelmez (reboot gerekirdi).
+    Bu surum: uzun sifir -> cava yenile -> hala olmuyorsa PipeWire tazele."""
     def __init__(self):
         self.bars = [0] * NUM_BARS
         self._lock = threading.Lock()
         self.proc = None
+        self._active_source = None
+        self._zero_since = None
+        self._last_data = time.time()
+        self._pw_reset_done = False
         self._t = threading.Thread(target=self._loop, daemon=True)
         self._t.start()
 
     def _start(self):
+        _wait_for_source()
+        self._active_source = _find_scarlett_monitor()
         write_cava_config()
         self.proc = subprocess.Popen(["cava"], stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self._zero_since = None
+
+    def _restart_cava(self):
+        try:
+            if self.proc:
+                self.proc.terminate()
+        except Exception:
+            pass
+        self.proc = None
+        self._zero_since = None
+
+    def _reset_pipewire(self):
+        """Son care: PipeWire monitor hatti oldugunde tazele (reboot yerine)."""
+        try:
+            subprocess.run(["systemctl", "--user", "restart",
+                            "pipewire", "pipewire-pulse", "wireplumber"],
+                           timeout=10)
+            time.sleep(3)
+        except Exception:
+            pass
 
     def _loop(self):
         while _state["running"]:
@@ -586,11 +633,42 @@ class CavaReader:
             try:
                 line = self.proc.stdout.readline()
                 if not line:
-                    time.sleep(0.5); continue
+                    time.sleep(1)
+                    self._restart_cava()
+                    continue
                 parts = line.strip().rstrip(";").split(";")
                 if len(parts) >= NUM_BARS:
+                    vals = [int(p) for p in parts[:NUM_BARS]]
                     with self._lock:
-                        self.bars = [int(p) for p in parts[:NUM_BARS]]
+                        self.bars = vals
+                    if max(vals) <= 1:
+                        # sessizlik / veri yok
+                        if self._zero_since is None:
+                            self._zero_since = time.time()
+                        else:
+                            elapsed = time.time() - self._zero_since
+                            # 1.5sn: kaynak degistiyse (profil) yenile
+                            if elapsed > 1.5:
+                                cur = _find_scarlett_monitor()
+                                if cur != self._active_source:
+                                    self._restart_cava()
+                                    continue
+                            # 5sn: kaynak ayni ama hala sifir -> cava yenile
+                            if elapsed > 5.0 and not self._pw_reset_done:
+                                self._restart_cava()
+                                self._pw_reset_done = "cava"
+                                continue
+                            # 12sn: cava yenilemesi de ise yaramadi -> PipeWire tazele
+                            if elapsed > 12.0 and self._pw_reset_done == "cava":
+                                self._reset_pipewire()
+                                self._pw_reset_done = "pw"
+                                self._restart_cava()
+                                continue
+                    else:
+                        # gercek veri geldi -> her seyi sifirla
+                        self._zero_since = None
+                        self._pw_reset_done = False
+                        self._last_data = time.time()
             except Exception:
                 continue
 
@@ -614,6 +692,22 @@ _LEFT_START = _MARGIN_X
 _RIGHT_START = _MARGIN_X + _HALF_USABLE + _CENTER_GAP
 _MAX_H = HEIGHT - 12
 _BOTTOM_Y = HEIGHT - 6
+
+
+_idle_font_cache = {}
+
+
+def draw_idle_screen(surf, t):
+    """NATIVE yatay bekleme ekrani (muzik yokken siyah kalmasin)."""
+    surf.fill((8, 8, 10))
+    key = 90
+    if key not in _idle_font_cache:
+        _idle_font_cache[key] = pygame.font.SysFont("DejaVu Sans", key, bold=True)
+    font = _idle_font_cache[key]
+    pulse = int(140 + 60 * abs(((t * 0.4) % 2.0) - 1.0))
+    color = (pulse, int(pulse * 0.85), int(pulse * 0.6))
+    ts = font.render("VİNTAGE SES KONSOLU", True, color)
+    surf.blit(ts, (WIDTH // 2 - ts.get_width() // 2, HEIGHT // 2 - ts.get_height() // 2))
 
 
 def draw_spectrum(surf, cava_bars, theme_name, fps):
@@ -854,7 +948,13 @@ def main():
             frame_start = time.time()
             snap = cava.snapshot()
             mode = _state["mode"]
-            if mode == "LED Spektrum":
+            # IDLE: uzun sure ses yoksa bekleme ekrani (siyah kalmasin)
+            if snap and max(snap) > 2:
+                _state["last_sound"] = time.time()
+            idle = (time.time() - _state.get("last_sound", 0)) > 8.0
+            if idle:
+                draw_idle_screen(surf, time.time() - t0)
+            elif mode == "LED Spektrum":
                 draw_led_spectrum(surf, snap, FPS)
             elif mode == "VU Metre":
                 draw_vu_meter(surf, snap)
