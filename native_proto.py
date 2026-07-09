@@ -704,18 +704,25 @@ def api_setup():
     cfg = os.path.join(THEME_DIR, "config.json")
     with open(cfg, "w") as f:
         f.write('{"name": "live_frame", "elements": []}\n')
-    # connect
-    try:
-        r = session.post(f"{API_BASE}/devices/{DEVICE_KEY}/connect", timeout=10)
-        print("connect:", r.json().get("message", r.text)[:60])
-        session.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/fit-mode",
-                    json={"mode": "stretch"}, timeout=5)
-        session.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/brightness",
-                    json={"percent": 100}, timeout=5)
-        return True
-    except Exception as e:
-        print("API setup HATA:", e)
-        return False
+    # connect - retry'li (acilista panel/serve hazir olmayabilir)
+    for attempt in range(6):
+        try:
+            r = session.post(f"{API_BASE}/devices/{DEVICE_KEY}/connect", timeout=10)
+            msg = r.json().get("message", r.text)
+            if r.json().get("ok") or "Connected" in str(msg):
+                print("connect:", str(msg)[:60])
+                session.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/fit-mode",
+                            json={"mode": "stretch"}, timeout=5)
+                session.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/brightness",
+                            json={"percent": _state.get("brightness", 100)}, timeout=5)
+                return True
+            else:
+                print(f"connect deneme {attempt+1}: {str(msg)[:50]}")
+        except Exception as e:
+            print(f"connect deneme {attempt+1} hata: {e}")
+        time.sleep(3)
+    print("API setup basarisiz (6 deneme). USB mesgul olabilir.")
+    return False
 
 
 # ==================== TRAY MENU (PyQt5) ====================
