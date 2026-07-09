@@ -40,7 +40,7 @@ COLOR_THEME_NAMES = list(COLOR_THEMES.keys())
 _HALF_N = NUM_BARS // 2
 
 _state = {"theme_idx": 0, "running": True, "ch_layout": 1,
-          "mode": "Spektrum", "led_theme_idx": 0, "vu_dial_idx": 0}
+          "mode": "Spektrum", "led_theme_idx": 0, "vu_dial_idx": 0, "meter_page": 0}
 
 LED_THEMES = {
     "Camgobegi": [(10, 90, 70), (40, 200, 190), (120, 255, 235)],
@@ -100,6 +100,142 @@ def _apply_layout(cava_bars):
     else:          return L[::-1] + R[::-1]
 
 
+# ==================== OLCUM PANELI (native yatay 2x2) ====================
+_meter_smooth = {"rms_l": 0.0, "rms_r": 0.0, "peak": 0.0, "peak_l": 0.0, "peak_r": 0.0,
+                 "freq_l": 0.0, "freq_r": 0.0, "centroid": 0.0, "bass": 0.0,
+                 "bal_l": 0.0, "bal_r": 0.0, "bal_pct": 50.0}
+_meter_fonts = {}
+
+
+def _meter_font(size, bold=True):
+    key = (size, bold)
+    if key not in _meter_fonts:
+        _meter_fonts[key] = pygame.font.SysFont("DejaVu Sans", size, bold=bold)
+    return _meter_fonts[key]
+
+
+def _bar_to_hz(bar_index, total_bars):
+    if total_bars <= 1:
+        return 0.0
+    f_min, f_max = 50.0, 16000.0
+    t = bar_index / (total_bars - 1)
+    return f_min * (f_max / f_min) ** t
+
+
+def draw_meter_panel(surf, cava_bars):
+    """NATIVE yatay Olcum Paneli: 2x2 grid, ses analizi (2 sayfa)."""
+    surf.fill((8, 10, 8))
+    n = len(cava_bars)
+    left = np.array(cava_bars[:_HALF_N], dtype=float) if n >= _HALF_N else np.zeros(_HALF_N)
+    right = np.array(cava_bars[_HALF_N:_HALF_N*2], dtype=float) if n >= _HALF_N*2 else np.zeros(_HALF_N)
+
+    rms_l = float(np.sqrt(np.mean(left**2))) / 255.0 if left.size else 0.0
+    rms_r = float(np.sqrt(np.mean(right**2))) / 255.0 if right.size else 0.0
+    peak_l = (float(left.max()) / 255.0) if left.size else 0.0
+    peak_r = (float(right.max()) / 255.0) if right.size else 0.0
+    peak = max(peak_l, peak_r)
+    if left.size and right.size:
+        _all = left + right; _tot = float(_all.sum())
+        _bass = float(_all[:max(1, _HALF_N // 4)].sum())
+        bass_ratio = (_bass / _tot) if _tot > 1 else 0.0
+    else:
+        bass_ratio = 0.0
+    eng_l = float(left.sum()) if left.size else 0.0
+    eng_r = float(right.sum()) if right.size else 0.0
+    eng_max = max(eng_l, eng_r, 1.0)
+    bal_l = eng_l / eng_max; bal_r = eng_r / eng_max
+    bal_pct = (eng_r / (eng_l + eng_r) * 100) if (eng_l + eng_r) > 1 else 50.0
+    freq_l = _bar_to_hz(int(np.argmax(left)), _HALF_N) if left.size and left.max() > 5 else 0.0
+    freq_r = _bar_to_hz(int(np.argmax(right)), _HALF_N) if right.size and right.max() > 5 else 0.0
+    allb = (left + right)
+    if allb.sum() > 1:
+        idx = np.arange(_HALF_N)
+        centroid = _bar_to_hz(float((idx * allb).sum() / allb.sum()), _HALF_N)
+    else:
+        centroid = 0.0
+
+    s = _meter_smooth; a = 0.3
+    for k, v in (("rms_l", rms_l), ("rms_r", rms_r), ("peak", peak),
+                 ("peak_l", peak_l), ("peak_r", peak_r), ("bass", bass_ratio),
+                 ("bal_l", bal_l), ("bal_r", bal_r), ("bal_pct", bal_pct),
+                 ("freq_l", freq_l), ("freq_r", freq_r), ("centroid", centroid)):
+        s[k] += (v - s[k]) * a
+
+    GREEN = (60, 230, 90); GREY = (70, 75, 70); DARK = (18, 22, 18)
+    LBL = (0, 210, 210); TITLE = (0, 210, 210)
+
+    def to_db(v):
+        if v <= 0.0001: return -60.0
+        return max(-60.0, 20.0 * math.log10(v))
+
+    page = _state.get("meter_page", 0)
+    if page == 0:
+        panels = [
+            ("RMS SEVIYE", [("Ch1", s["rms_l"], f"{to_db(s['rms_l']):.1f}", "dB"),
+                            ("Ch2", s["rms_r"], f"{to_db(s['rms_r']):.1f}", "dB")]),
+            ("FREKANS", [("Ch1", min(1.0, s["freq_l"]/16000), f"{s['freq_l']/1000:.2f}", "kHz"),
+                         ("Ch2", min(1.0, s["freq_r"]/16000), f"{s['freq_r']/1000:.2f}", "kHz")]),
+            ("STEREO DENGE", [("Sol", s["bal_l"], f"{100-s['bal_pct']:.0f}", "%"),
+                              ("Sag", s["bal_r"], f"{s['bal_pct']:.0f}", "%")]),
+            ("MERKEZ", [("Frk", min(1.0, s["centroid"]/16000), f"{s['centroid']/1000:.2f}", "kHz"),
+                        ("Bas", s["bass"], f"{s['bass']*100:.0f}", "%")]),
+        ]
+    else:
+        dr_l = max(0.0, to_db(s["peak_l"]) - to_db(s["rms_l"]))
+        dr_r = max(0.0, to_db(s["peak_r"]) - to_db(s["rms_r"]))
+        crest_l = (s["peak_l"] / s["rms_l"]) if s["rms_l"] > 0.001 else 0.0
+        crest_r = (s["peak_r"] / s["rms_r"]) if s["rms_r"] > 0.001 else 0.0
+        _el = float(left.sum()); _er = float(right.sum())
+        width = abs(_el - _er) / (_el + _er) if (_el + _er) > 1 else 0.0
+        if left.size and right.size:
+            _allb2 = left + right; _tot2 = float(_allb2.sum())
+            _treble = float(_allb2[_HALF_N*3//4:].sum())
+            treble_ratio = (_treble / _tot2) if _tot2 > 1 else 0.0
+        else:
+            treble_ratio = 0.0
+        for k, v in (("dr", (dr_l+dr_r)/2), ("crest", (crest_l+crest_r)/2),
+                     ("width", width), ("treble", treble_ratio)):
+            s.setdefault(k, 0.0); s[k] += (v - s[k]) * a
+        panels = [
+            ("DINAMIK", [("Arl", min(1.0, s["dr"]/40), f"{s['dr']:.1f}", "dB"),
+                         ("Crs", min(1.0, s["crest"]/4), f"{s['crest']:.2f}", "x")]),
+            ("STEREO", [("Gen", min(1.0, s["width"]), f"{s['width']*100:.0f}", "%"),
+                        ("Bal", s["bal_r"], f"{s['bal_pct']:.0f}", "%")]),
+            ("ENERJI", [("Tiz", min(1.0, s["treble"]*3), f"{s['treble']*100:.0f}", "%"),
+                        ("Bas", s["bass"], f"{s['bass']*100:.0f}", "%")]),
+            ("TEPE", [("Ch1", s["peak_l"], f"{to_db(s['peak_l']):.1f}", "dB"),
+                      ("Ch2", s["peak_r"], f"{to_db(s['peak_r']):.1f}", "dB")]),
+        ]
+
+    # NATIVE 2x2 grid
+    pw = WIDTH // 2; ph = HEIGHT // 2
+    tfont = _meter_font(30); lblf = _meter_font(26)
+    numf = _meter_font(38); unitf = _meter_font(20)
+    for pi, (title, rows) in enumerate(panels):
+        gx = (pi % 2) * pw; gy = (pi // 2) * ph
+        ts = tfont.render(title, True, TITLE)
+        surf.blit(ts, (gx + 20, gy + 8))
+        for ri, (label, val, num, unit) in enumerate(rows):
+            ry = gy + 50 + ri * ((ph - 55) // 2)
+            cy = ry + ((ph - 55) // 2) // 2
+            ls = lblf.render(label, True, LBL)
+            surf.blit(ls, (gx + 20, cy - ls.get_height()//2))
+            bar_x = gx + 90
+            num_area = 150
+            bar_w_full = pw - 90 - num_area
+            bar_h = 24
+            bar_y = cy - bar_h // 2
+            v = max(0.0, min(1.0, val))
+            pygame.draw.rect(surf, DARK, (bar_x, bar_y, bar_w_full, bar_h))
+            fill_w = int(bar_w_full * v)
+            pygame.draw.rect(surf, GREEN, (bar_x, bar_y, fill_w, bar_h))
+            pygame.draw.rect(surf, GREY, (bar_x, bar_y, bar_w_full, bar_h), 1)
+            ns = numf.render(num, True, GREEN)
+            surf.blit(ns, (gx + pw - num_area + 10, cy - ns.get_height()//2))
+            us = unitf.render(unit, True, GREEN)
+            surf.blit(us, (gx + pw - 40, cy - us.get_height()//2 + 4))
+
+
 # ==================== SISTEM MONITORU (native yatay, Mac tarzi) ====================
 try:
     import sysmon as _sysmon_mod
@@ -144,60 +280,87 @@ def draw_sysmon(surf, fps):
         if t < 80: return (245, 210, 60)
         return (235, 60, 40)
 
-    cpu_t = d.get("cpu_pkg"); gpu_j = d.get("gpu_junction") or d.get("gpu_temp")
-    vrm = d.get("mb_vrm"); pch = d.get("mb_pch")
+    cpu_t = d.get("cpu_pkg"); cores = d.get("cores_max")
+    gpu_j = d.get("gpu_junction") or d.get("gpu_temp"); gpu_e = d.get("gpu_edge"); gpu_m = d.get("gpu_mem")
+    vrm = d.get("mb_vrm"); pch = d.get("mb_pch"); mbsys = d.get("mb_system")
     use = d.get("cpu_usage"); gpu_u = d.get("gpu_usage")
     ram = d.get("ram_pct"); frq = d.get("cpu_freq")
     cpu_p = d.get("cpu_power"); gpu_p = d.get("gpu_power")
-    pump = d.get("fan_pump"); sfan = d.get("fan_sys1")
+    vram_u = d.get("gpu_vram_used"); vram_t = d.get("gpu_vram_total")
+    cfan = d.get("fan_cpu"); pump = d.get("fan_pump"); gfan = d.get("gpu_fan_rpm")
+    s1 = d.get("fan_sys1"); s2 = d.get("fan_sys2"); s3 = d.get("fan_sys3")
+    s4 = d.get("fan_sys4"); s5 = d.get("fan_sys5"); s6 = d.get("fan_sys6")
     nd = d.get("net_down"); nu = d.get("net_up")
 
     def net_fmt(mbps):
         if mbps is None: return ("--", "kB/s", 0)
         if mbps < 1.0: return (f"{mbps*1024:.0f}", "kB/s", mbps/100.0)
-        return (f"{mbps:.1f}", "MB/s", mbps/100.0)
+        return (f"{mbps:.2f}", "MB/s", mbps/100.0)
     nd_txt, nd_unit, nd_frac = net_fmt(nd)
     nu_txt, nu_unit, nu_frac = net_fmt(nu)
 
     def col(t): return temp_color(t)
-    bars = [
+    vram_frac = (vram_u/vram_t) if (vram_u and vram_t) else 0
+    # SATIR 1: sicakliklar + kullanim (12 bar)
+    bars_top = [
         ("CPU",  f"{cpu_t:.0f}"  if cpu_t is not None else "--", "C",  (cpu_t/100.0)  if cpu_t else 0, col(cpu_t)),
+        ("Cekir",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
         ("GPU",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C",  (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
+        ("GEdge",f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C",  (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
+        ("GMem", f"{gpu_m:.0f}"  if gpu_m is not None else "--", "C",  (gpu_m/100.0)  if gpu_m else 0, col(gpu_m)),
         ("VRM",  f"{vrm:.0f}"    if vrm is not None else "--",   "C",  (vrm/100.0)    if vrm else 0,   col(vrm)),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C",  (pch/90.0)     if pch else 0,   col(pch)),
+        ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C",  (mbsys/90.0)   if mbsys else 0, col(mbsys)),
         ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%",  (use/100.0)    if use is not None else 0, GREEN),
         ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%",  (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
         ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%",  (ram/100.0)    if ram is not None else 0, GREEN),
+        ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
+    ]
+    # SATIR 2: frekans + guc + fanlar + ag (14 bar)
+    bars_bot = [
         ("GHz",  f"{frq/1000:.1f}" if frq else "--",            "",   (frq/5700.0)   if frq else 0, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W",  (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W",  (gpu_p/350.0)  if gpu_p else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm",(pump/3000.0)  if pump else 0, GREEN),
-        ("SFan", f"{sfan:.0f}"   if sfan else "0",               "rpm",(sfan/3000.0)  if sfan else 0, GREEN),
+        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",  (cfan/3000.0)  if cfan else 0, GREEN),
+        ("Pump", f"{pump:.0f}"   if pump else "0",               "",  (pump/3000.0)  if pump else 0, GREEN),
+        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "",  (gfan/3000.0)  if gfan else 0, GREEN),
+        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "",  (s1/3000.0)    if s1 else 0, GREEN),
+        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "",  (s2/3000.0)    if s2 else 0, GREEN),
+        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "",  (s3/3000.0)    if s3 else 0, GREEN),
+        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "",  (s4/3000.0)    if s4 else 0, GREEN),
+        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "",  (s5/3000.0)    if s5 else 0, GREEN),
+        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "",  (s6/3000.0)    if s6 else 0, GREEN),
         ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
         ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
     ]
-    n = len(bars); margin = 30
-    slot_w = (WIDTH - 2*margin) // n
-    bar_w = max(8, int(slot_w * 0.25))
-    bar_top = 70; bar_bottom = HEIGHT - 52
-    bar_h_full = bar_bottom - bar_top
-    vfont = _sm_font(42); ufont = _sm_font(20); lfont = _sm_font(22)
-    for idx, (lbl, vtxt, unit, frac, color) in enumerate(bars):
-        frac = max(0.0, min(1.0, frac))
-        slot_x = margin + idx * slot_w
-        cx = slot_x + slot_w // 2
-        x = cx - bar_w // 2
-        pygame.draw.rect(surf, DARK, (x, bar_top, bar_w, bar_h_full))
-        fh = int(bar_h_full * frac)
-        pygame.draw.rect(surf, color, (x, bar_bottom - fh, bar_w, fh))
-        pygame.draw.rect(surf, GREY, (x, bar_top, bar_w, bar_h_full), 1)
-        vs = vfont.render(vtxt, True, color)
-        surf.blit(vs, (cx - vs.get_width()//2, 24))
-        if unit:
-            us = ufont.render(unit, True, DIM)
-            surf.blit(us, (cx - us.get_width()//2, 24 + vs.get_height() - 2))
-        ls = lfont.render(lbl, True, WHITE)
-        surf.blit(ls, (cx - ls.get_width()//2, bar_bottom + 10))
+    margin = 16
+    vfont = _sm_font(30); ufont = _sm_font(15); lfont = _sm_font(17)
+
+    def draw_row(bars, row_top, row_bottom):
+        n = len(bars)
+        slot_w = (WIDTH - 2*margin) // n
+        bar_w = max(6, int(slot_w * 0.22))
+        bar_top = row_top + 42
+        bar_bottom = row_bottom - 22
+        bar_h_full = bar_bottom - bar_top
+        for idx, (lbl, vtxt, unit, frac, color) in enumerate(bars):
+            frac = max(0.0, min(1.0, frac))
+            slot_x = margin + idx * slot_w
+            cx = slot_x + slot_w // 2
+            x = cx - bar_w // 2
+            pygame.draw.rect(surf, DARK, (x, bar_top, bar_w, bar_h_full))
+            fh = int(bar_h_full * frac)
+            pygame.draw.rect(surf, color, (x, bar_bottom - fh, bar_w, fh))
+            pygame.draw.rect(surf, GREY, (x, bar_top, bar_w, bar_h_full), 1)
+            vts = vtxt + (unit if unit else "")
+            vs = vfont.render(vts, True, color)
+            surf.blit(vs, (cx - vs.get_width()//2, row_top + 2))
+            ls = lfont.render(lbl, True, WHITE)
+            surf.blit(ls, (cx - ls.get_width()//2, bar_bottom + 3))
+
+    half = HEIGHT // 2
+    draw_row(bars_top, 0, half)
+    draw_row(bars_bot, half, HEIGHT)
 
 
 # ==================== VU METRE (native yatay, 3 kadran) ====================
@@ -590,6 +753,8 @@ def main():
                 draw_vu_meter(surf, snap)
             elif mode == "Sistem Monitoru":
                 draw_sysmon(surf, FPS)
+            elif mode == "Olcum Paneli":
+                draw_meter_panel(surf, snap)
             else:
                 draw_spectrum(surf, snap, COLOR_THEME_NAMES[_state["theme_idx"]], FPS)
 
