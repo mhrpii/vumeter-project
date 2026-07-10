@@ -14,7 +14,7 @@ mkdir -p "$ROOT/DEBIAN" \
          "$ROOT/usr/share/applications"
 
 # ---- 2) Uygulama dosyalari ----
-for f in vumeter_linux.py sysmon.py sysmon_window.py vu_bg.png vu_bg2.png vu_bg3.png; do
+for f in vumeter_linux.py control_window_desktop.py sysmon.py sysmon_window.py vu_bg.png vu_bg2.png vu_bg3.png; do
     cp "$SRC/$f" "$ROOT/opt/vumeter-desktop/" || { echo "EKSIK DOSYA: $f"; exit 1; }
 done
 

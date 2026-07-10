@@ -7,6 +7,7 @@ import math
 import os
 import shutil
 import threading
+import time
 
 # --- Sistem Monitoru alt-modu: "--sysmon" argumaniyla acilirsa sadece
 #     monitor penceresini calistir ve cik (ayni .app ikinci pencere icin
@@ -63,9 +64,14 @@ state = {
     "vu_dial_idx": 0,          # VU_DIALS index'i (TAB ile VU Metre modunda)
     "ch_layout": 1,            # C tusu: kanal dizilimi (0:L+R, 1:L+R', 2:L'+R, 3:L'+R')
     "quit": False,             # tepsi menusunden cikis istegi
+    "last_sound": 0.0,         # son ses zamani (idle icin)
 }
 
-pygame.init()
+# pygame.init() ses mixer'ini da baslatir -> mixer bir ses aygiti acar ->
+# PipeWire/KDE "ses aygiti degisti" OSD'sini tetikler (LG monitorde profil
+# listesi belirir). Biz ses CALMIYORUZ (cava'dan okuyoruz), mixer'a gerek yok.
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+pygame.display.init()
 pygame.font.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Vintage Audio Console Pro")
@@ -77,8 +83,34 @@ font_vu_label = pygame.font.SysFont("Menlo", 18)
 font_vu_power = pygame.font.SysFont("Menlo", 22, bold=True)
 
 # --- CAVA CONFIG ---
-cava_conf_text = f"""
-[general]
+CAVA_SOURCE_FALLBACK = "alsa_output.usb-Focusrite_Scarlett_Solo_4th_Gen_S1TTKRP5739DF7-00.HiFi__Line1__sink.monitor"
+conf_path = os.path.expanduser("~/.temp_cava_vu.conf")
+
+
+def _find_scarlett_monitor():
+    """Profil bagimsiz: Scarlett iceren ilk .monitor kaynagi (RUNNING onceli)."""
+    try:
+        out = subprocess.run(["pactl", "list", "short", "sources"],
+                             capture_output=True, text=True, timeout=3).stdout
+        cand = []
+        for line in out.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            name = parts[1]
+            if "Scarlett" in name and name.endswith(".monitor"):
+                cand.append(("RUNNING" in line, name))
+        if cand:
+            cand.sort(key=lambda c: (not c[0]))
+            return cand[0][1]
+    except Exception:
+        pass
+    return CAVA_SOURCE_FALLBACK
+
+
+def _write_cava_conf():
+    src = _find_scarlett_monitor()
+    txt = f"""[general]
 bars = {NUM_BARS}
 framerate = {FPS}
 autosens = 0
@@ -89,16 +121,16 @@ integral = 55
 gravity = 150
 [input]
 method = pulse
-source = alsa_output.usb-Focusrite_Scarlett_Solo_4th_Gen_S1TTKRP5739DF7-00.HiFi__Line1__sink.monitor
+source = {src}
 [output]
 method = raw
 raw_target = /dev/stdout
 data_format = ascii
 ascii_max_range = 255
 """
-conf_path = os.path.expanduser("~/.temp_cava_vu.conf")
-with open(conf_path, "w") as f:
-    f.write(cava_conf_text)
+    with open(conf_path, "w") as f:
+        f.write(txt)
+
 
 def find_cava():
     candidates = [
@@ -112,22 +144,80 @@ def find_cava():
             return c
     return None
 
+
 cava_path = find_cava()
 if not cava_path:
-    print("HATA: 'cava' bulunamadi. 'brew install cava' ile kurabilirsin.")
+    print("HATA: 'cava' bulunamadi.")
     sys.exit(1)
 
-cava_cmd = [cava_path, "-p", conf_path]
-cava_proc = subprocess.Popen(cava_cmd, stdout=subprocess.PIPE, text=True, bufsize=1)
 
-_latest_line = {"value": "", "lock": threading.Lock()}
+class CavaReader:
+    """Guclendirilmis (LCD surumunden): profil bagimsiz kaynak + otomatik
+    yeniden baslatma + kaynak degisimi yakalama. Ses profili degisince
+    (pro-audio <-> HiFi) veya cava olunce kendini toparlar."""
+    def __init__(self):
+        self.bars = [0] * NUM_BARS
+        self._lock = threading.Lock()
+        self.proc = None
+        self._active_source = None
+        self._zero_since = None
+        self._t = threading.Thread(target=self._loop, daemon=True)
+        self._t.start()
 
-def _cava_reader():
-    for raw_line in cava_proc.stdout:
-        with _latest_line["lock"]:
-            _latest_line["value"] = raw_line.strip()
+    def _start(self):
+        self._active_source = _find_scarlett_monitor()
+        _write_cava_conf()
+        self.proc = subprocess.Popen([cava_path, "-p", conf_path],
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     text=True, bufsize=1)
+        self._zero_since = None
 
-threading.Thread(target=_cava_reader, daemon=True).start()
+    def _restart(self):
+        try:
+            if self.proc:
+                self.proc.terminate()
+        except Exception:
+            pass
+        self.proc = None
+        self._zero_since = None
+
+    def _loop(self):
+        while True:
+            if self.proc is None or self.proc.poll() is not None:
+                with self._lock:
+                    self.bars = [0] * NUM_BARS
+                try:
+                    self._start()
+                except Exception:
+                    time.sleep(2); continue
+            try:
+                line = self.proc.stdout.readline()
+                if not line:
+                    time.sleep(1); self._restart(); continue
+                parts = line.strip().rstrip(";").split(";")
+                if len(parts) >= NUM_BARS:
+                    vals = [int(p) for p in parts[:NUM_BARS]]
+                    with self._lock:
+                        self.bars = vals
+                    if max(vals) <= 1:
+                        # sessizlik: kaynak degistiyse (profil) yenile
+                        if self._zero_since is None:
+                            self._zero_since = time.time()
+                        elif time.time() - self._zero_since > 1.5:
+                            cur = _find_scarlett_monitor()
+                            if cur != self._active_source:
+                                self._restart(); continue
+                    else:
+                        self._zero_since = None
+            except Exception:
+                continue
+
+    def snapshot(self):
+        with self._lock:
+            return list(self.bars)
+
+
+cava = CavaReader()
 
 left_angle = 180.0
 right_angle = 180.0
@@ -258,6 +348,23 @@ def draw_photo_needle(piv_x, piv_y, disp_w, current_angle):
 
 
 # ---------- GORUNUM 1: SPEKTRUM (ust: VU dial'lar, alt: barlar) ----------
+_idle_font_cache = {}
+
+
+def draw_idle_screen(surf, t):
+    """Bekleme ekrani (muzik yokken) - pulse efektli VINTAGE SES KONSOLU."""
+    W, H = surf.get_size()
+    surf.fill((8, 8, 10))
+    key = max(48, int(W * 0.06))
+    if key not in _idle_font_cache:
+        _idle_font_cache[key] = pygame.font.SysFont("DejaVu Sans", key, bold=True)
+    font = _idle_font_cache[key]
+    pulse = int(140 + 60 * abs(((t * 0.4) % 2.0) - 1.0))
+    color = (pulse, int(pulse * 0.85), int(pulse * 0.6))
+    ts = font.render("VİNTAGE SES KONSOLU", True, color)
+    surf.blit(ts, (W // 2 - ts.get_width() // 2, H // 2 - ts.get_height() // 2))
+
+
 def draw_spectrum(W_CUR, H_CUR, stereo_bars, theme_name, cava_bars):
     # Ust yari: iki gercek VU fotografi
     disp_w = max(220, min(int(W_CUR * 0.30), 460))
@@ -768,6 +875,17 @@ def setup_tray():
             p.end()
             return QIcon(pm)
 
+        def theme_icon(stops):
+            """Tema paletinden 3 renkli yatay serit ikonu."""
+            pm2 = QPixmap(48, 48); pm2.fill(QColor(0, 0, 0, 0))
+            pp = QPainter(pm2)
+            n = len(stops); seg = 48 // n
+            for i, c in enumerate(stops):
+                pp.setBrush(QColor(c[0], c[1], c[2])); pp.setPen(QColor(c[0], c[1], c[2]))
+                pp.drawRect(i * seg, 8, seg, 32)
+            pp.end()
+            return QIcon(pm2)
+
         tray = QSystemTrayIcon(make_icon())
         tray.setToolTip("Vintage Audio Console")
         menu = QMenu()
@@ -781,19 +899,19 @@ def setup_tray():
                     _vu_scaled_cache.clear()
             return _f
 
-        # Spektrum / Spektrum 2 -> renk temalari
+        # Spektrum / Spektrum 2 -> renk temalari (renk onizleme ikonlu)
         for mname, mkey in (("Spektrum", "Spektrum"), ("Spektrum 2 (Bar)", "Spektrum 2")):
             sub = menu.addMenu(mname)
             for i, tn in enumerate(COLOR_THEME_NAMES):
-                a = QAction(tn, menu)
+                a = QAction(theme_icon(COLOR_THEMES[tn]), tn, menu)
                 a.triggered.connect(set_state(mode=mkey, theme_idx=i))
                 sub.addAction(a)
 
-        # LED modlari -> LED temalari
+        # LED modlari -> LED temalari (renk onizleme ikonlu)
         for mname in ("LED Spektrum", "LED Nokta"):
             sub = menu.addMenu(mname)
             for i, tn in enumerate(LED_THEME_NAMES):
-                a = QAction(tn, menu)
+                a = QAction(theme_icon(LED_THEMES[tn]), tn, menu)
                 a.triggered.connect(set_state(mode=mname, led_theme_idx=i))
                 sub.addAction(a)
 
@@ -894,6 +1012,38 @@ def setup_tray():
         cik.triggered.connect(set_state(quit=True))
         menu.addAction(cik)
 
+        # SOL TIK -> kontrol penceresi (her seferinde sag tik menu gerekmesin)
+        _ctrl_win = [None]
+        def open_control():
+            try:
+                import control_window_desktop as cwd
+                if _ctrl_win[0] is None:
+                    _ctrl_win[0] = cwd.build_control_window(
+                        state, COLOR_THEME_NAMES, LED_THEME_NAMES, len(VU_DIALS),
+                        lambda: _led_tex.update(surf=None),
+                        lambda: _vu_scaled_cache.clear(),
+                        open_sysmon,
+                        lambda: state.__setitem__("quit", True))
+                    _tray_refs["ctrl"] = _ctrl_win[0]
+                cw = _ctrl_win[0]
+                if hasattr(cw, "_refresh"): cw._refresh()
+                cw.show(); cw.raise_(); cw.activateWindow()
+            except Exception as e:
+                print(f"Kontrol penceresi hatasi: {e}")
+
+        def on_tray_activated(reason):
+            from PyQt5.QtWidgets import QSystemTrayIcon as _QSTI
+            if reason in (_QSTI.Trigger, _QSTI.DoubleClick):
+                open_control()
+        tray.activated.connect(on_tray_activated)
+
+        # Menuye de en uste "Kontrol Paneli Ac" ekle
+        first = menu.actions()[0] if menu.actions() else None
+        open_act = QAction("Kontrol Paneli Ac", menu)
+        open_act.triggered.connect(open_control)
+        menu.insertAction(first, open_act)
+        menu.insertSeparator(first)
+
         tray.setContextMenu(menu)
         tray.show()
         return app
@@ -961,17 +1111,9 @@ while running:
                 else:
                     state["theme_idx"] = (state["theme_idx"] + 1) % len(COLOR_THEME_NAMES)
 
-    with _latest_line["lock"]:
-        line = _latest_line["value"]
-
-    cava_bars = [0] * NUM_BARS
-    if line:
-        try:
-            cava_bars = [int(x) for x in line.split(';') if x]
-            if len(cava_bars) < NUM_BARS:
-                cava_bars += [0] * (NUM_BARS - len(cava_bars))
-        except ValueError:
-            cava_bars = [0] * NUM_BARS
+    cava_bars = cava.snapshot()
+    if len(cava_bars) < NUM_BARS:
+        cava_bars = cava_bars + [0] * (NUM_BARS - len(cava_bars))
 
     # Kanal dizilimi C tusuyla canli secilir (varsayilan 1 = L+R')
     _L = cava_bars[:HALF_BARS]; _R = cava_bars[HALF_BARS:HALF_BARS*2]
@@ -982,7 +1124,14 @@ while running:
     else:           stereo_bars = _L[::-1] + _R[::-1]
 
     mode = state["mode"]
-    if mode == "LED Spektrum":
+    # IDLE: uzun sure ses yoksa bekleme ekrani. Sistem Monitoru haric
+    # (o ayri pencerede zaten). Diger modlar sessizlikte idle'a duser.
+    if cava_bars and max(cava_bars) > 2:
+        state["last_sound"] = time.time()
+    idle = (time.time() - state.get("last_sound", 0)) > 8.0
+    if idle:
+        draw_idle_screen(screen, time.time())
+    elif mode == "LED Spektrum":
         draw_led_spectrum(W_CURRENT, H_CURRENT, stereo_bars, LED_THEME_NAMES[state["led_theme_idx"]], "rect")
     elif mode == "LED Nokta":
         draw_led_spectrum(W_CURRENT, H_CURRENT, stereo_bars, LED_THEME_NAMES[state["led_theme_idx"]], "dot")
@@ -1001,7 +1150,10 @@ while running:
     pygame.display.flip()
     clock.tick(FPS)
 
-cava_proc.terminate()
+try:
+    cava.proc.terminate()
+except Exception:
+    pass
 try: os.remove(conf_path)
 except: pass
 pygame.display.quit()
