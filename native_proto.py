@@ -244,6 +244,20 @@ except Exception:
     _sysmon_mod = None
 _sysmon_instance = None
 _sm_font_cache = {}
+from collections import deque as _deque
+_sm_history = {}   # etiket -> deque(son ~60 kare frac degeri)  (12sn @ 5fps)
+_SM_HIST_LEN = 60
+
+
+def _sm_grad_rgb(t):
+    """0..1 -> yesil->sari->kirmizi gecis (grafik icin)."""
+    t = max(0.0, min(1.0, t))
+    if t < 0.5:
+        f = t / 0.5
+        return (int(58 + (242-58)*f), int(212 - (212-201)*f), int(110 - (110-76)*f))
+    else:
+        f = (t - 0.5) / 0.5
+        return (int(242 + (235-242)*f), int(201 - (201-60)*f), int(76 - (76-40)*f))
 
 
 def _get_sysmon():
@@ -277,8 +291,8 @@ def draw_sysmon(surf, fps):
 
     def temp_color(t):
         if t is None: return GREY
-        if t < 65: return (60, 230, 90)
-        if t < 80: return (245, 210, 60)
+        if t < 55: return (60, 230, 90)
+        if t < 70: return (245, 210, 60)
         return (235, 60, 40)
 
     cpu_t = d.get("cpu_pkg"); cores = d.get("cores_max")
@@ -305,7 +319,7 @@ def draw_sysmon(surf, fps):
     # SATIR 1: sicakliklar + kullanim (12 bar)
     bars_top = [
         ("CPU",  f"{cpu_t:.0f}"  if cpu_t is not None else "--", "C",  (cpu_t/100.0)  if cpu_t else 0, col(cpu_t)),
-        ("Cekir",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
+        ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
         ("GPU",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C",  (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
         ("GEdge",f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C",  (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
         ("GMem", f"{gpu_m:.0f}"  if gpu_m is not None else "--", "C",  (gpu_m/100.0)  if gpu_m else 0, col(gpu_m)),
@@ -337,23 +351,37 @@ def draw_sysmon(surf, fps):
     margin = 16
     vfont = _sm_font(30); ufont = _sm_font(15); lfont = _sm_font(17)
 
-    def draw_grad_bar(x, y, w, h, frac):
-        """Yatay gradient bar: yesil->sari->kirmizi, sadece dolu kismi.
-        frac'a gore anlik uzar/kisalir (canli)."""
-        frac = max(0.0, min(1.0, frac))
-        # arka yuva
-        pygame.draw.rect(surf, (34, 43, 54), (x, y, w, h), border_radius=h//2)
-        fw = int(w * frac)
-        if fw < 2:
+    def draw_card_graph(cx0, cy0, cw, ch, hist, base_color):
+        """Kartin TAMAMINI kaplayan alan grafigi (son 12sn).
+        Tek renk (kartin durum rengi), BELIRGIN dolgu + net cizgi.
+        Mockup tarzi. Hizli (polygon). Rakam ustte net kalir."""
+        if len(hist) < 2:
             return
-        # gradient: her pikselde yesil(0)->sari(0.5)->kirmizi(1) ama SADECE frac orani icinde
-        for i in range(0, fw, 3):
-            t = i / w   # 0..frac
-            if t < 0.5:
-                r = int(58 + (242-58) * (t/0.5)); g = 212; b = int(110 - 34*(t/0.5))
-            else:
-                r = 242; g = int(201 - (201-87) * ((t-0.5)/0.5)); b = int(76 - 29*((t-0.5)/0.5))
-            pygame.draw.rect(surf, (r, g, b), (x + i, y, 3, h))
+        n = len(hist)
+        prev_clip = surf.get_clip()
+        surf.set_clip(pygame.Rect(cx0, cy0, cw, ch))
+        base_y = cy0 + ch
+        step = cw / (_SM_HIST_LEN - 1)
+        pts = []
+        for i, v in enumerate(hist):
+            x = cx0 + int((i + (_SM_HIST_LEN - n)) * step)
+            y = base_y - int(ch * max(0.0, min(1.0, v)) * 0.92)
+            pts.append((x, y))
+        r0, g0, b0 = base_color
+        # DOLGU (koyu ton, koyu arka planla harmanlanmis - mockup gibi)
+        fill = (r0//4 + 12, g0//4 + 14, b0//4 + 16)
+        poly = pts + [(pts[-1][0], base_y), (pts[0][0], base_y)]
+        pygame.draw.polygon(surf, fill, poly)
+        # UST bandda daha canli ince katman (cizgi altinda ~30px parlak dolgu)
+        bright = (r0//2 + 20, g0//2 + 22, b0//2 + 24)
+        band = []
+        for (x, y) in pts:
+            band.append((x, y))
+        band_bottom = [(x, min(base_y, y + int(ch*0.18))) for (x, y) in reversed(pts)]
+        pygame.draw.polygon(surf, bright, band + band_bottom)
+        # UST CIZGI: net, tam renk
+        pygame.draw.lines(surf, base_color, False, pts, 2)
+        surf.set_clip(prev_clip)
 
     def draw_row(bars, row_top, row_bottom):
         n = len(bars)
@@ -374,24 +402,24 @@ def draw_sysmon(surf, fps):
             ccx = cx0 + card_w // 2
             # kart arka plani
             pygame.draw.rect(surf, (22, 27, 34), (cx0, card_top, card_w, card_h), border_radius=12)
+            # GECMIS guncelle + arka plan grafigi ciz (rakamdan ONCE)
+            hkey = (lbl, unit)
+            if hkey not in _sm_history:
+                _sm_history[hkey] = _deque(maxlen=_SM_HIST_LEN)
+            _sm_history[hkey].append(frac)
+            draw_card_graph(cx0, card_top, card_w, card_h, _sm_history[hkey], color)
+            # kart cercevesi
             pygame.draw.rect(surf, (35, 43, 54), (cx0, card_top, card_w, card_h), 1, border_radius=12)
-            # buyuk rakam (durum rengi)
+            # buyuk rakam (durum rengi) - grafigin USTUNDE, net
             vs = cardf.render(vtxt, True, color)
             surf.blit(vs, (ccx - vs.get_width()//2, card_top + int(card_h*0.13)))
             # birim
             if unit:
-                us = unitf2.render(unit, True, (139, 152, 168))
+                us = unitf2.render(unit, True, (170, 182, 196))
                 surf.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.44)))
             # etiket
-            ls = lblf2.render(lbl, True, (200, 210, 222))
+            ls = lblf2.render(lbl, True, (210, 220, 232))
             surf.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.60)))
-            # YATAY gradient bar (canli - frac'a gore anlik)
-            bar_m = int(card_w * 0.10)
-            bx = cx0 + bar_m
-            bw = card_w - 2*bar_m
-            bh = max(10, int(card_h*0.10))
-            by = card_top + card_h - bh - int(card_h*0.10)
-            draw_grad_bar(bx, by, bw, bh, frac)
 
     half = HEIGHT // 2
     draw_row(bars_top, 0, half)
