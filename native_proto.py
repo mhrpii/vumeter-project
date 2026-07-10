@@ -777,12 +777,14 @@ class CavaReader:
                                 self._restart_cava()
                                 self._pw_reset_done = "cava"
                                 continue
-                            # 12sn: cava yenilemesi de ise yaramadi -> PipeWire tazele
-                            if elapsed > 12.0 and self._pw_reset_done == "cava":
-                                self._reset_pipewire()
-                                self._pw_reset_done = "pw"
-                                self._restart_cava()
-                                continue
+                            # 12sn: PipeWire reset DEVRE DISI (LG monitor profil taramasi
+                            # sorununa yol aciyordu). cava yenileme yeterli. Gerekirse geri al:
+                            # elle "systemctl --user restart pipewire pipewire-pulse wireplumber"
+                            # if elapsed > 12.0 and self._pw_reset_done == "cava":
+                            #     self._reset_pipewire()
+                            #     self._pw_reset_done = "pw"
+                            #     self._restart_cava()
+                            #     continue
                     else:
                         # gercek veri geldi -> her seyi sifirla
                         self._zero_since = None
@@ -871,7 +873,9 @@ def draw_spectrum(surf, cava_bars, theme_name, fps):
 def sender_process_main(shm_name, frame_counter, w, h, api_base, key, theme_dir):
     import requests as rq
     import pygame as pg
-    pg.init()
+    # mixer'siz init (ses aygiti acmasin - LG OSD tetiklemesin)
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    pg.display.init()
     shm = shared_memory.SharedMemory(name=shm_name)
     session = rq.Session()
     png_path = os.path.join(theme_dir, "00.png")
@@ -1084,7 +1088,13 @@ def main():
     args = [a for a in args if not a.startswith("--")]
     if args:
         _state["mode"] = args[0]
-    pygame.init()
+    # pygame.init() TUM modulleri (ses mixer dahil) baslatir -> mixer bir ses
+    # aygiti acar -> PipeWire/KDE "ses aygiti degisti" OSD'sini tetikler (LG'de
+    # profil listesi belirir). Biz ses CALMIYORUZ (cava'dan okuyoruz), mixer'a
+    # gerek yok. Sadece gerekli modulleri baslat, mixer'i ATLA:
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")  # ses surucusu yukleme
+    pygame.display.init()
+    pygame.font.init()
     surf = pygame.Surface((WIDTH, HEIGHT))
     print(f"MOD: {_state['mode']}" + (" (autostart)" if autostart else ""))
 
@@ -1184,6 +1194,15 @@ def main():
         print("\nCikiliyor...")
     finally:
         _state["running"] = False
+        # Cikista paneli TEMIZLE (eski goruntu donuk kalmasin) - siyah kare gonder
+        try:
+            import requests as _rq
+            black = pygame.Surface((WIDTH, HEIGHT)); black.fill((0, 0, 0))
+            pygame.image.save(black, os.path.join(THEME_DIR, "00.png"))
+            _rq.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/theme",
+                     json={"path": "live_frame"}, timeout=2)
+        except Exception:
+            pass
         frame_counter.value = -1
         time.sleep(0.3)
         try:
