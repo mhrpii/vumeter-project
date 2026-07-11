@@ -1,10 +1,10 @@
 """Bagimsiz Sistem Monitoru penceresi (VintageVU'dan ayri surec olarak acilir).
-LCD surumundeki KART tasarimi + arka plan alan grafigi (son ~12sn); sysmon.py'den
-gercek donanim verisi okur."""
+LCD surumundeki GAUGE (dairesel halka) tasarimi: halka boyunca yesil->sari->kirmizi
+gradient, puruzsuz kenar, 13/13 dengeli dizilim. sysmon.py'den gercek veri okur."""
 import os
 import sys
+import math
 import pygame
-from collections import deque as _deque
 
 try:
     import sysmon
@@ -33,35 +33,42 @@ def temp_color(t):
     return (235, 60, 40)
 
 
-# --- Grafik gecmisi (son ~12sn) ---
-_sm_history = {}
-_SM_HIST_LEN = 72
+def _sm_grad_rgb(t):
+    """0..1 -> yesil->sari->kirmizi YUMUSAK gecis."""
+    t = max(0.0, min(1.0, t))
+    if t < 0.5:
+        f = t / 0.5
+        return (int(58 + (242-58)*f), int(212 - (212-201)*f), int(110 - (110-76)*f))
+    else:
+        f = (t - 0.5) / 0.5
+        return (int(242 + (235-242)*f), int(201 - (201-60)*f), int(76 - (76-40)*f))
 
 
-def draw_card_graph(surf, cx0, cy0, cw, ch, hist, base_color):
-    """Kartin TAMAMINI kaplayan alan grafigi. Tek renk (durum rengi),
-    belirgin dolgu + net cizgi. Rakam ustte net kalir."""
-    if len(hist) < 2:
+def _arc_dots(surf, cx, cy, radius, deg_start, deg_end, width, color_fn):
+    """Yayi sik dolu dairelerle ciz -> puruzsuz yuvarlak kenar."""
+    if deg_end <= deg_start:
         return
-    n = len(hist)
-    prev_clip = surf.get_clip()
-    surf.set_clip(pygame.Rect(cx0, cy0, cw, ch))
-    base_y = cy0 + ch
-    step = cw / (_SM_HIST_LEN - 1)
-    pts = []
-    for i, v in enumerate(hist):
-        x = cx0 + int((i + (_SM_HIST_LEN - n)) * step)
-        y = base_y - int(ch * max(0.0, min(1.0, v)) * 0.92)
-        pts.append((x, y))
-    r0, g0, b0 = base_color
-    fill = (r0//4 + 12, g0//4 + 14, b0//4 + 16)
-    poly = pts + [(pts[-1][0], base_y), (pts[0][0], base_y)]
-    pygame.draw.polygon(surf, fill, poly)
-    bright = (r0//2 + 20, g0//2 + 22, b0//2 + 24)
-    band_bottom = [(x, min(base_y, y + int(ch*0.18))) for (x, y) in reversed(pts)]
-    pygame.draw.polygon(surf, bright, pts + band_bottom)
-    pygame.draw.lines(surf, base_color, False, pts, 2)
-    surf.set_clip(prev_clip)
+    r = max(2, width // 2)
+    arc_len = math.radians(deg_end - deg_start) * radius
+    steps = max(3, int(arc_len / max(1, r * 0.55)))
+    for i in range(steps + 1):
+        f = i / steps
+        deg = deg_start + (deg_end - deg_start) * f
+        a = math.radians(deg)
+        x = cx + radius * math.cos(a)
+        y = cy + radius * math.sin(a)
+        col = color_fn((deg - 150) / 240.0)
+        pygame.draw.circle(surf, col, (int(x), int(y)), r)
+
+
+def draw_card_gauge(surf, cx, cy, radius, frac):
+    """240 derece halka, boyunca gradient renk, puruzsuz."""
+    frac = max(0.0, min(1.0, frac))
+    _arc_dots(surf, cx, cy, radius, 150, 390, 13, lambda t: (36, 45, 58))
+    if frac <= 0.005:
+        return
+    end_deg = 150 + 240 * frac
+    _arc_dots(surf, cx, cy, radius, 150, end_deg, 13, _sm_grad_rgb)
 
 
 def draw(screen, d):
@@ -79,14 +86,15 @@ def draw(screen, d):
     cpu_p = d.get("cpu_power"); gpu_p = d.get("gpu_power")
     cfan = d.get("fan_cpu"); pump = d.get("fan_pump")
     gfan = d.get("gpu_fan_rpm")
-    sfans = [d.get(f"fan_sys{i}") for i in range(1, 7)]
+    s1 = d.get("fan_sys1"); s2 = d.get("fan_sys2"); s3 = d.get("fan_sys3")
+    s4 = d.get("fan_sys4"); s5 = d.get("fan_sys5"); s6 = d.get("fan_sys6")
     nd = d.get("net_down"); nu = d.get("net_up")
 
     def net_fmt(mb_s):
         if mb_s is None:
             return ("--", "Mbps", 0)
         mbit = mb_s * 8.388608
-        return (f"{mbit:.2f}", "Mbps", mbit / 1000.0)
+        return (f"{mbit:.1f}", "Mbps", mbit / 1000.0)
     nd_txt, nd_unit, nd_frac = net_fmt(nd)
     nu_txt, nu_unit, nu_frac = net_fmt(nu)
 
@@ -94,33 +102,38 @@ def draw(screen, d):
     vram_txt = f"{vram_u:.1f}" if vram_u is not None else "--"
 
     def col(t): return temp_color(t)
+
+    # SATIR 1 (13): sicakliklar + aktif fanlar + GHz
     bars_top = [
         ("CPU",  f"{cpu_t:.0f}"  if cpu_t is not None else "--", "C", (cpu_t/100.0)  if cpu_t else 0, col(cpu_t)),
         ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C", (cores/100.0)  if cores else 0, col(cores)),
-        ("GPU",  f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C", (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
-        ("Jnc",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C", (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
-        ("VMem", f"{gpu_m:.0f}"  if gpu_m is not None else "--", "C", (gpu_m/100.0)  if gpu_m else 0, col(gpu_m)),
+        ("GPU",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C", (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
+        ("GEdge",f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C", (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
+        ("GMem", f"{gpu_m:.0f}"  if gpu_m is not None else "--", "C", (gpu_m/100.0)  if gpu_m else 0, col(gpu_m)),
         ("VRM",  f"{vrm:.0f}"    if vrm is not None else "--",   "C", (vrm/100.0)    if vrm else 0,   col(vrm)),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C", (pch/90.0)     if pch else 0,   col(pch)),
-        ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C", (mbsys/80.0)   if mbsys else 0, col(mbsys)),
+        ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C", (mbsys/90.0)   if mbsys else 0, col(mbsys)),
+        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",  (cfan/3000.0)  if cfan else 0, GREEN),
+        ("Pump", f"{pump:.0f}"   if pump else "0",               "",  (pump/3000.0)  if pump else 0, GREEN),
+        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "",  (gfan/3000.0)  if gfan else 0, GREEN),
+        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "",  (s1/3000.0)    if s1 else 0, GREEN),
+        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",  (frq/5700.0)   if frq else 0, GREEN),
+    ]
+    # SATIR 2 (13): kullanim + guc + pasif fanlar + ag
+    bars_bot = [
         ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%", (use/100.0)    if use is not None else 0, GREEN),
         ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%", (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
         ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%", (ram/100.0)    if ram is not None else 0, GREEN),
-        ("VRAM", vram_txt,                                       "GB", vram_frac, GREEN),
-    ]
-    bars_bot = [
-        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",  (frq/5700.0)   if frq else 0, GREEN),
+        ("VRAM", vram_txt,                                       "G", vram_frac, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W", (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W", (gpu_p/350.0)  if gpu_p else 0, GREEN),
-        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm", (cfan/3000.0) if cfan else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm", (pump/3000.0) if pump else 0, GREEN),
-        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm", (gfan/3000.0) if gfan else 0, GREEN),
-    ] + [
-        (f"S{i+1}", f"{sf:.0f}" if sf else "0", "rpm", (sf/3000.0) if sf else 0, GREEN)
-        for i, sf in enumerate(sfans)
-    ] + [
-        ("İndir", nd_txt, nd_unit, nd_frac, GREEN),
-        ("Yükle", nu_txt, nu_unit, nu_frac, GREEN),
+        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "",  (s2/3000.0)    if s2 else 0, GREEN),
+        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "",  (s3/3000.0)    if s3 else 0, GREEN),
+        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "",  (s4/3000.0)    if s4 else 0, GREEN),
+        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "",  (s5/3000.0)    if s5 else 0, GREEN),
+        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "",  (s6/3000.0)    if s6 else 0, GREEN),
+        ("İndir",nd_txt, nd_unit, nd_frac, GREEN),
+        ("Yükle",nu_txt, nu_unit, nu_frac, GREEN),
     ]
 
     margin = 20
@@ -132,29 +145,38 @@ def draw(screen, d):
         card_w = (W - 2*margin - (n-1)*gap) // n
         card_top = row_top + 8
         card_h = (row_bottom - row_top) - 16
-        _max_n = 14
-        _ref_w = (W - 2*margin - (_max_n-1)*gap) // _max_n
-        cardf = _font(int(_ref_w * 0.34))
-        unitf = _font(max(14, int(_ref_w * 0.17)), bold=False)
-        lblf = _font(max(15, int(_ref_w * 0.18)))
+        # rakam fontu: TUM kartlarda ayni (en uzun "3267" sigacak sekilde)
+        _gr = int(min(card_w, card_h) * 0.47)
+        _gsize = int(card_w * 0.33)
+        vfont = _font(_gsize)
+        while vfont.size("3267")[0] > int(_gr * 1.5) and _gsize > 10:
+            _gsize -= 1
+            vfont = _font(_gsize)
+        unitf = _font(max(13, int(card_w * 0.13)), bold=False)
+        lblf = _font(max(14, int(card_w * 0.15)))
+
         for idx, (lbl, vtxt, unit, frac, color) in enumerate(bars):
             frac = max(0.0, min(1.0, frac))
             cx0 = margin + idx * (card_w + gap)
             ccx = cx0 + card_w // 2
+            gcol = _sm_grad_rgb(frac)
+            # kart
             pygame.draw.rect(screen, (22, 27, 34), (cx0, card_top, card_w, card_h), border_radius=14)
-            hkey = (lbl, unit)
-            if hkey not in _sm_history:
-                _sm_history[hkey] = _deque(maxlen=_SM_HIST_LEN)
-            _sm_history[hkey].append(frac)
-            draw_card_graph(screen, cx0, card_top, card_w, card_h, _sm_history[hkey], color)
-            pygame.draw.rect(screen, (38, 46, 58), (cx0, card_top, card_w, card_h), 1, border_radius=14)
-            vs = cardf.render(vtxt, True, color)
-            screen.blit(vs, (ccx - vs.get_width()//2, card_top + int(card_h*0.14)))
+            pygame.draw.rect(screen, (35, 43, 54), (cx0, card_top, card_w, card_h), 1, border_radius=14)
+            # gauge
+            gauge_cy = card_top + int(card_h * 0.44)
+            gauge_r = int(min(card_w, card_h) * 0.47)
+            draw_card_gauge(screen, ccx, gauge_cy, gauge_r, frac)
+            # rakam (halka ortasinda, ayni boyut)
+            vs = vfont.render(vtxt, True, gcol)
+            screen.blit(vs, (ccx - vs.get_width()//2, gauge_cy - vs.get_height()//2))
+            # birim
             if unit:
                 us = unitf.render(unit, True, (170, 182, 196))
-                screen.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.46)))
+                screen.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.72)))
+            # etiket
             ls = lblf.render(lbl, True, (210, 220, 232))
-            screen.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.62)))
+            screen.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.86)))
 
     draw_row(bars_top, 0, half)
     draw_row(bars_bot, half, H)

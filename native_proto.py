@@ -316,7 +316,7 @@ def draw_sysmon(surf, fps):
 
     def col(t): return temp_color(t)
     vram_frac = (vram_u/vram_t) if (vram_u and vram_t) else 0
-    # SATIR 1: sicakliklar + kullanim (12 bar)
+    # SATIR 1 (13): sicakliklar + AKTIF fanlar (birbiriyle ilgili: isi + sogutma)
     bars_top = [
         ("CPU",  f"{cpu_t:.0f}"  if cpu_t is not None else "--", "C",  (cpu_t/100.0)  if cpu_t else 0, col(cpu_t)),
         ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
@@ -326,62 +326,60 @@ def draw_sysmon(surf, fps):
         ("VRM",  f"{vrm:.0f}"    if vrm is not None else "--",   "C",  (vrm/100.0)    if vrm else 0,   col(vrm)),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C",  (pch/90.0)     if pch else 0,   col(pch)),
         ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C",  (mbsys/90.0)   if mbsys else 0, col(mbsys)),
+        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",   (cfan/3000.0)  if cfan else 0, GREEN),
+        ("Pump", f"{pump:.0f}"   if pump else "0",               "",   (pump/3000.0)  if pump else 0, GREEN),
+        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "",   (gfan/3000.0)  if gfan else 0, GREEN),
+        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "",   (s1/3000.0)    if s1 else 0, GREEN),
+        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",   (frq/5700.0)   if frq else 0, GREEN),
+    ]
+    # SATIR 2 (13): kullanim + guc + pasif fanlar + ag
+    bars_bot = [
         ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%",  (use/100.0)    if use is not None else 0, GREEN),
         ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%",  (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
         ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%",  (ram/100.0)    if ram is not None else 0, GREEN),
         ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
-    ]
-    # SATIR 2: frekans + guc + fanlar + ag (14 bar)
-    bars_bot = [
-        ("GHz",  f"{frq/1000:.1f}" if frq else "--",            "",   (frq/5700.0)   if frq else 0, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W",  (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W",  (gpu_p/350.0)  if gpu_p else 0, GREEN),
-        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",  (cfan/3000.0)  if cfan else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "",  (pump/3000.0)  if pump else 0, GREEN),
-        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "",  (gfan/3000.0)  if gfan else 0, GREEN),
-        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "",  (s1/3000.0)    if s1 else 0, GREEN),
-        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "",  (s2/3000.0)    if s2 else 0, GREEN),
-        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "",  (s3/3000.0)    if s3 else 0, GREEN),
-        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "",  (s4/3000.0)    if s4 else 0, GREEN),
-        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "",  (s5/3000.0)    if s5 else 0, GREEN),
-        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "",  (s6/3000.0)    if s6 else 0, GREEN),
+        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "",   (s2/3000.0)    if s2 else 0, GREEN),
+        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "",   (s3/3000.0)    if s3 else 0, GREEN),
+        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "",   (s4/3000.0)    if s4 else 0, GREEN),
+        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "",   (s5/3000.0)    if s5 else 0, GREEN),
+        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "",   (s6/3000.0)    if s6 else 0, GREEN),
         ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
         ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
     ]
     margin = 16
     vfont = _sm_font(30); ufont = _sm_font(15); lfont = _sm_font(17)
 
-    def draw_card_graph(cx0, cy0, cw, ch, hist, base_color):
-        """Kartin TAMAMINI kaplayan alan grafigi (son 12sn).
-        Tek renk (kartin durum rengi), BELIRGIN dolgu + net cizgi.
-        Mockup tarzi. Hizli (polygon). Rakam ustte net kalir."""
-        if len(hist) < 2:
+    def _arc_dots(cx, cy, radius, deg_start, deg_end, width, color_fn):
+        """Yayi SIK DOLU DAIRELERLE ciz -> kenarlar puruzsuz/yuvarlak (tirtik yok).
+        color_fn(t) -> o konumun rengi (t: 0..1 yay boyunca)."""
+        if deg_end <= deg_start:
             return
-        n = len(hist)
-        prev_clip = surf.get_clip()
-        surf.set_clip(pygame.Rect(cx0, cy0, cw, ch))
-        base_y = cy0 + ch
-        step = cw / (_SM_HIST_LEN - 1)
-        pts = []
-        for i, v in enumerate(hist):
-            x = cx0 + int((i + (_SM_HIST_LEN - n)) * step)
-            y = base_y - int(ch * max(0.0, min(1.0, v)) * 0.92)
-            pts.append((x, y))
-        r0, g0, b0 = base_color
-        # DOLGU (koyu ton, koyu arka planla harmanlanmis - mockup gibi)
-        fill = (r0//4 + 12, g0//4 + 14, b0//4 + 16)
-        poly = pts + [(pts[-1][0], base_y), (pts[0][0], base_y)]
-        pygame.draw.polygon(surf, fill, poly)
-        # UST bandda daha canli ince katman (cizgi altinda ~30px parlak dolgu)
-        bright = (r0//2 + 20, g0//2 + 22, b0//2 + 24)
-        band = []
-        for (x, y) in pts:
-            band.append((x, y))
-        band_bottom = [(x, min(base_y, y + int(ch*0.18))) for (x, y) in reversed(pts)]
-        pygame.draw.polygon(surf, bright, band + band_bottom)
-        # UST CIZGI: net, tam renk
-        pygame.draw.lines(surf, base_color, False, pts, 2)
-        surf.set_clip(prev_clip)
+        r = max(2, width // 2)
+        # adim: daire caplari ust uste binsin (puruzsuz)
+        arc_len = math.radians(deg_end - deg_start) * radius
+        steps = max(3, int(arc_len / max(1, r * 0.55)))
+        for i in range(steps + 1):
+            f = i / steps
+            deg = deg_start + (deg_end - deg_start) * f
+            a = math.radians(deg)
+            x = cx + radius * math.cos(a)
+            y = cy + radius * math.sin(a)
+            col = color_fn((deg - 150) / 240.0)
+            pygame.draw.circle(surf, col, (int(x), int(y)), r)
+
+    def draw_card_gauge(cx, cy, radius, frac, base_color):
+        """Dairesel ilerleme halkasi (240 derece, alttan acik).
+        Halka BOYUNCA gradient (yesil->sari->kirmizi), kenarlar puruzsuz."""
+        frac = max(0.0, min(1.0, frac))
+        # arka halka (bos, koyu) - tek renk
+        _arc_dots(cx, cy, radius, 150, 390, 11, lambda t: (36, 45, 58))
+        if frac <= 0.005:
+            return
+        # dolu kisim: konuma gore gradient renk
+        end_deg = 150 + 240 * frac
+        _arc_dots(cx, cy, radius, 150, end_deg, 11, _sm_grad_rgb)
 
     def draw_row(bars, row_top, row_bottom):
         n = len(bars)
@@ -391,35 +389,42 @@ def draw_sysmon(surf, fps):
         card_top = row_top + 6
         card_h = (row_bottom - row_top) - 12
         # Font boyutu EN DAR satira (max kart) gore sabit -> ust/alt ayni buyuklukte
-        _max_n = 14
+        _max_n = 13
         _ref_w = (WIDTH - 2*margin - (_max_n-1)*gap) // _max_n
-        cardf = _sm_font(int(_ref_w * 0.32))   # buyuk rakam (sabit, iki satir ayni)
+        cardf = _sm_font(int(_ref_w * 0.32))   # (kullanilmiyor - gauge fontu asagida)
+        # Gauge ici rakam: TUM kartlarda ayni boyut. En uzun deger "3267" (4 hane)
+        # dar karta sigacak sekilde bir kez hesaplanir.
+        _gr = int(min(_ref_w, (row_bottom - row_top) - 16) * 0.42)
+        _gsize = int(_ref_w * 0.33)
+        _gauge_vfont = _sm_font(_gsize)
+        while _gauge_vfont.size("3267")[0] > int(_gr * 1.55) and _gsize > 10:
+            _gsize -= 1
+            _gauge_vfont = _sm_font(_gsize)
         unitf2 = _sm_font(max(14, int(_ref_w * 0.16)), bold=False)
         lblf2 = _sm_font(max(14, int(_ref_w * 0.17)))
         for idx, (lbl, vtxt, unit, frac, color) in enumerate(bars):
             frac = max(0.0, min(1.0, frac))
             cx0 = card_x0 + idx * (card_w + gap)
             ccx = cx0 + card_w // 2
+            # YUMUSAK renk: frac'a gore surekli yesil->sari->kirmizi gecis
+            gcol = _sm_grad_rgb(frac)
             # kart arka plani
             pygame.draw.rect(surf, (22, 27, 34), (cx0, card_top, card_w, card_h), border_radius=12)
-            # GECMIS guncelle + arka plan grafigi ciz (rakamdan ONCE)
-            hkey = (lbl, unit)
-            if hkey not in _sm_history:
-                _sm_history[hkey] = _deque(maxlen=_SM_HIST_LEN)
-            _sm_history[hkey].append(frac)
-            draw_card_graph(cx0, card_top, card_w, card_h, _sm_history[hkey], color)
-            # kart cercevesi
             pygame.draw.rect(surf, (35, 43, 54), (cx0, card_top, card_w, card_h), 1, border_radius=12)
-            # buyuk rakam (durum rengi) - grafigin USTUNDE, net
-            vs = cardf.render(vtxt, True, color)
-            surf.blit(vs, (ccx - vs.get_width()//2, card_top + int(card_h*0.13)))
-            # birim
+            # DAIRESEL HALKA (frac kadar dolu, yumusak renk)
+            gauge_cy = card_top + int(card_h * 0.44)
+            gauge_r = int(min(card_w, card_h) * 0.47)   # YAY genis + kalin
+            draw_card_gauge(ccx, gauge_cy, gauge_r, frac, gcol)
+            # rakam - TUM kartlarda AYNI boyut (en uzun "3267"e gore sabit)
+            vs = _gauge_vfont.render(vtxt, True, gcol)
+            surf.blit(vs, (ccx - vs.get_width()//2, gauge_cy - vs.get_height()//2))
+            # birim (halka altinda kucuk)
             if unit:
                 us = unitf2.render(unit, True, (170, 182, 196))
-                surf.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.44)))
-            # etiket
+                surf.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.72)))
+            # etiket (en altta)
             ls = lblf2.render(lbl, True, (210, 220, 232))
-            surf.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.60)))
+            surf.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.86)))
 
     half = HEIGHT // 2
     draw_row(bars_top, 0, half)
