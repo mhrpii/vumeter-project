@@ -6,9 +6,16 @@ import sys
 import pygame
 from collections import deque as _deque
 
+# Platforma gore sensor kaynagi:
+#   Windows -> sysmon_win (LibreHardwareMonitor DLL, yonetici gerekir)
+#   Linux   -> sysmon     (hwmon)
 try:
-    import sysmon
-except Exception:
+    if sys.platform == "win32":
+        import sysmon_win as sysmon
+    else:
+        import sysmon
+except Exception as _e:
+    print("sysmon yuklenemedi:", _e)
     sysmon = None
 
 WIDTH, HEIGHT = 1600, 900
