@@ -2,3 +2,14 @@ __pycache__/
 arsiv/
 textler/
 *.txt
+
+build/
+dist/
+*.dll
+*.spec.bak
+sensors*.txt
+sestest.py
+jitter.py
+voltest.py
+bartest.py
+sensors_probe*.py
