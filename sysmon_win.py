@@ -65,6 +65,7 @@ class SysMonitor:
     # ---------- ic yardimcilar ----------
     @staticmethod
     def _sens(hw, stype, name):
+        """TAM isim eslesmesi."""
         for s in hw.Sensors:
             if str(s.SensorType) == stype and str(s.Name) == name:
                 return _num(s.Value)
@@ -72,11 +73,40 @@ class SysMonitor:
 
     @staticmethod
     def _sens_any(hw, stype, names):
+        """Sirayla tam isimleri dene."""
         for n in names:
             v = SysMonitor._sens(hw, stype, n)
             if v is not None:
                 return v
         return None
+
+    @staticmethod
+    def _sens_like(hw, stype, keywords, exclude=()):
+        """ESNEK: ismi anahtar kelimelerden BIRINI iceren ilk sensor.
+        Farkli anakart/cip isimlendirmelerinde de bulur.
+        Ornek: ("VRM",) -> 'VRM MOS', 'VRM', 'VRM Temp' hepsini yakalar."""
+        for s in hw.Sensors:
+            if str(s.SensorType) != stype:
+                continue
+            nm = str(s.Name).lower()
+            if any(x.lower() in nm for x in exclude):
+                continue
+            if any(k.lower() in nm for k in keywords):
+                v = _num(s.Value)
+                if v is not None:
+                    return v
+        return None
+
+    @staticmethod
+    def _fans_all(hw):
+        """Tum fanlari (isim, deger) olarak sirayla dondur - isim ne olursa olsun."""
+        out = []
+        for s in hw.Sensors:
+            if str(s.SensorType) == "Fan":
+                v = _num(s.Value)
+                if v is not None:
+                    out.append((str(s.Name), v))
+        return out
 
     @staticmethod
     def _update(hw):
@@ -129,10 +159,18 @@ class SysMonitor:
 
             # ---------- CPU ----------
             if ht == "Cpu":
-                d["cpu_pkg"] = self._sens(hw, "Temperature", "CPU Package")
-                d["cores_max"] = self._sens_any(hw, "Temperature", ["Core Max", "Core Average"])
-                d["cpu_usage"] = self._sens(hw, "Load", "CPU Total")
-                d["cpu_power"] = self._sens(hw, "Power", "CPU Package")
+                # ESNEK: Intel "CPU Package", AMD "Core (Tctl/Tdie)" vb.
+                d["cpu_pkg"] = (self._sens_any(hw, "Temperature",
+                                    ["CPU Package", "Core (Tctl/Tdie)", "Core (Tctl)", "CPU"])
+                                or self._sens_like(hw, "Temperature", ["package", "tctl", "tdie"],
+                                                   exclude=["distance"]))
+                d["cores_max"] = (self._sens_any(hw, "Temperature", ["Core Max", "Core Average"])
+                                  or self._sens_like(hw, "Temperature", ["core max", "core average"],
+                                                     exclude=["distance"]))
+                d["cpu_usage"] = (self._sens(hw, "Load", "CPU Total")
+                                  or self._sens_like(hw, "Load", ["total"]))
+                d["cpu_power"] = (self._sens_any(hw, "Power", ["CPU Package", "Package"])
+                                  or self._sens_like(hw, "Power", ["package", "cpu"]))
                 for s in hw.Sensors:
                     if str(s.SensorType) == "Clock" and str(s.Name) != "Bus Speed":
                         v = _num(s.Value)
@@ -141,36 +179,70 @@ class SysMonitor:
 
             # ---------- GPU ----------
             elif ht.startswith("Gpu"):
-                d["gpu_junction"] = self._sens_any(hw, "Temperature", ["GPU Hot Spot", "GPU Core"])
-                d["gpu_edge"] = self._sens(hw, "Temperature", "GPU Core")
-                d["gpu_power"] = self._sens_any(hw, "Power", ["GPU Package", "GPU Power"])
-                d["gpu_fan_rpm"] = self._sens(hw, "Fan", "GPU Fan")
-                gl = self._sens(hw, "Load", "GPU Core")
-                if gl is None:
-                    gl = self._sens(hw, "Load", "D3D 3D")
+                # ESNEK: AMD "Hot Spot", NVIDIA sadece "GPU Core" verir
+                d["gpu_junction"] = (self._sens_any(hw, "Temperature", ["GPU Hot Spot", "GPU Junction"])
+                                     or self._sens_like(hw, "Temperature", ["hot spot", "junction"])
+                                     or self._sens_like(hw, "Temperature", ["gpu core", "core"]))
+                d["gpu_edge"] = (self._sens_any(hw, "Temperature", ["GPU Core"])
+                                 or self._sens_like(hw, "Temperature", ["gpu core", "core", "edge"],
+                                                    exclude=["hot", "junction", "memory"]))
+                # GPU bellek sicakligi (varsa) - yoksa asagida DIMM kullanilir
+                d["_gpu_mem_temp"] = self._sens_like(hw, "Temperature", ["memory", "vram", "hbm"])
+                d["gpu_power"] = (self._sens_any(hw, "Power", ["GPU Package", "GPU Power"])
+                                  or self._sens_like(hw, "Power", ["package", "total", "gpu"]))
+                d["gpu_fan_rpm"] = (self._sens_any(hw, "Fan", ["GPU Fan", "GPU Fan 1"])
+                                    or self._sens_like(hw, "Fan", ["fan"]))
+                gl = (self._sens_any(hw, "Load", ["GPU Core", "D3D 3D"])
+                      or self._sens_like(hw, "Load", ["gpu core", "3d"], exclude=["memory"]))
                 d["gpu_usage"] = gl
-                vu = self._sens(hw, "SmallData", "GPU Memory Used")
-                vt = self._sens(hw, "SmallData", "GPU Memory Total")
+                vu = (self._sens_any(hw, "SmallData", ["GPU Memory Used", "D3D Dedicated Memory Used"])
+                      or self._sens_like(hw, "SmallData", ["memory used"]))
+                vt = (self._sens_any(hw, "SmallData", ["GPU Memory Total", "D3D Dedicated Memory Total"])
+                      or self._sens_like(hw, "SmallData", ["memory total"]))
                 d["gpu_vram_used"] = (vu / 1024.0) if vu else None      # MB -> GB
                 d["gpu_vram_total"] = (vt / 1024.0) if vt else None
 
             # ---------- Anakart (NCT6687D alt donanimda) ----------
             elif ht == "Motherboard":
                 for sub in hw.SubHardware:
-                    d["mb_vrm"] = self._sens_any(sub, "Temperature", ["VRM MOS", "VRM"])
-                    d["mb_pch"] = self._sens_any(sub, "Temperature", ["Chipset", "PCH"])
-                    d["mb_system"] = self._sens_any(sub, "Temperature", ["System", "Motherboard"])
-                    d["fan_cpu"] = self._sens(sub, "Fan", "CPU Fan")
-                    d["fan_pump"] = self._sens_any(sub, "Fan", ["Pump Fan #1", "Pump Fan"])
-                    d["fan_chipset"] = self._sens(sub, "Fan", "Chipset Fan")
+                    # ESNEK sicakliklar (cipe gore isim degisir)
+                    v = self._sens_like(sub, "Temperature", ["vrm", "mos"])
+                    if v is not None: d["mb_vrm"] = v
+                    v = self._sens_like(sub, "Temperature", ["chipset", "pch"])
+                    if v is not None: d["mb_pch"] = v
+                    v = self._sens_like(sub, "Temperature", ["system", "motherboard", "mainboard"])
+                    if v is not None: d["mb_system"] = v
+
+                    # ESNEK fanlar: once bilinen isimler, sonra SIRAYLA doldur
+                    fans = self._fans_all(sub)
+                    if not fans:
+                        continue
+                    used = set()
+
+                    def pick(keys):
+                        for i, (nm2, val) in enumerate(fans):
+                            if i in used:
+                                continue
+                            low = nm2.lower()
+                            if any(k in low for k in keys):
+                                used.add(i)
+                                return val
+                        return None
+
+                    d["fan_cpu"] = pick(["cpu"])
+                    d["fan_pump"] = pick(["pump", "aio", "water"])
+                    d["fan_chipset"] = pick(["chipset", "pch"])
+                    # kalan fanlari S1..S6'ya SIRAYLA doldur (isim ne olursa olsun)
+                    rest = [v2 for i, (n2, v2) in enumerate(fans) if i not in used]
                     for i in range(1, 7):
-                        d[f"fan_sys{i}"] = self._sens(sub, "Fan", f"System Fan #{i}")
+                        d[f"fan_sys{i}"] = rest[i - 1] if len(rest) >= i else None
 
             # ---------- RAM ----------
             elif ht == "Memory":
-                if nm == "Total Memory" or (d.get("ram_pct") is None and "Virtual" not in nm):
-                    v = self._sens(hw, "Load", "Memory")
-                    if v is not None and nm != "Virtual Memory":
+                # fiziksel RAM kullanimi ("Virtual Memory" haric)
+                if "virtual" not in nm.lower():
+                    v = self._sens(hw, "Load", "Memory") or self._sens_like(hw, "Load", ["memory"])
+                    if v is not None and d.get("ram_pct") is None:
                         d["ram_pct"] = v
                 # DIMM sicakligi (GPU bellek sicakligi yok -> onun yerine)
                 for s in hw.Sensors:
@@ -191,8 +263,9 @@ class SysMonitor:
         # CPU frekans (MHz) - en yuksek cekirdek
         d["cpu_freq"] = max(cpu_clocks) if cpu_clocks else None
 
-        # GPU bellek sicakligi yok -> DIMM (RAM modulu) sicakligi
-        d["gpu_mem"] = max(dimm_temps) if dimm_temps else None
+        # GPU bellek sicakligi varsa onu, yoksa DIMM (RAM modulu) sicakligini goster
+        gmt = d.pop("_gpu_mem_temp", None)
+        d["gpu_mem"] = gmt if gmt is not None else (max(dimm_temps) if dimm_temps else None)
 
         # Ag: bytes/s -> MiB/s (Linux sysmon ile ayni birim)
         if best_net:

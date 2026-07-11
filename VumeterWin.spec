@@ -1,59 +1,52 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""VintageAudioConsole - Windows .exe paketleme (PyInstaller)
+"""VintageAudioConsole - Windows .exe (SENSORLU + YONETICI)
 
 Kullanim:
-    py -3.12 -m pip install pyinstaller
     py -3.12 -m PyInstaller VumeterWin.spec --clean
 
-Cikti: dist\\VintageAudioConsole.exe   (tek dosya, Python gerekmez)
+Cikti: dist\VintageAudioConsole.exe
 
-Not: Ilk denemede console=False birakildi -> hata olursa terminalde gorunur.
-     Her sey calisinca console=False yapip yeniden derleyebilirsin (siyah
-     terminal penceresi acilmaz).
+ONEMLI: uac_admin=True -> exe cift tiklaninca Windows otomatik "yonetici olarak
+        calistir" ister. Sensorler (sicaklik/fan) icin SART.
+
+Not: console=False (hata gorunur). Sorunsuz calisinca False yapip yeniden derle.
 """
+
+import glob as _glob
+import os as _os
+
+# LHM ve TUM bagimliliklari (System.Memory.dll, System.Buffers.dll, HidSharp.dll ...)
+# Klasordeki her .dll pakete gomulur - eksik bagimlilik kalmasin.
+_ALL_DLLS = [(p, '.') for p in _glob.glob('*.dll')]
+print("PAKETE GOMULEN DLL'ler:", [_os.path.basename(p) for p, _ in _ALL_DLLS])
 
 block_cipher = None
 
 a = Analysis(
     ['vumeter_win.py'],
     pathex=[],
-    binaries=[],
+    binaries=_ALL_DLLS,
     datas=[
-        # VU kadran arka planlari (get_resource_path ile okunuyor)
         ('vu_bg.png', '.'),
         ('vu_bg2.png', '.'),
         ('vu_bg3.png', '.'),
-        # kontrol penceresi modulu (sol tik ile aciliyor)
         ('control_window_desktop.py', '.'),
+        ('sysmon_window.py', '.'),
+        ('sysmon_win.py', '.'),
     ],
     hiddenimports=[
-        # ses yakalama (WASAPI loopback)
-        'soundcard',
-        'soundcard.mediafoundation',
-        'cffi',
-        '_cffi_backend',
-        # ses seviyesi (pycaw + comtypes)
-        'pycaw',
-        'pycaw.pycaw',
-        'pycaw.utils',
-        'comtypes',
-        'comtypes.client',
-        'comtypes.stream',
-        # kontrol penceresi (runtime'da import ediliyor)
-        'control_window_desktop',
-        # arayuz
-        'PyQt5.QtCore',
-        'PyQt5.QtGui',
-        'PyQt5.QtWidgets',
+        'soundcard', 'soundcard.mediafoundation', 'cffi', '_cffi_backend',
+        'pycaw', 'pycaw.pycaw', 'pycaw.utils',
+        'comtypes', 'comtypes.client', 'comtypes.stream',
+        'clr', 'pythonnet', 'clr_loader',
+        'control_window_desktop', 'sysmon_window', 'sysmon_win',
+        'PyQt5.QtCore', 'PyQt5.QtGui', 'PyQt5.QtWidgets',
         'numpy',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        # gereksiz agir paketler (varsa) - exe boyutunu kucultur
-        'matplotlib', 'scipy', 'pandas', 'tkinter', 'PySide2', 'PySide6',
-    ],
+    excludes=['matplotlib', 'scipy', 'pandas', 'tkinter', 'PySide2', 'PySide6'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -76,10 +69,11 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,          # hata ayiklama icin acik; sorunsuz calisinca False yap
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    uac_admin=True,
 )
