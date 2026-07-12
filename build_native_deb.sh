@@ -71,7 +71,7 @@ cat > "$ROOT/etc/xdg/autostart/vumeter-lcd-native.desktop" << 'EOF'
 Type=Application
 Name=Vumeter LCD Native
 Comment=Acilista LCD ses gorsellestirme
-Exec=bash -c "sleep 20; exec vumeter-lcd-native --autostart"
+Exec=bash -c "sleep 10; exec vumeter-lcd-native --autostart"
 Icon=multimedia-volume-control
 Terminal=false
 Categories=AudioVideo;Audio;
