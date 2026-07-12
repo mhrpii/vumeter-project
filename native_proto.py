@@ -260,6 +260,52 @@ def _sm_grad_rgb(t):
         return (int(242 + (235-242)*f), int(201 - (201-60)*f), int(76 - (76-40)*f))
 
 
+# ==================== HAVA DURUMU (sol ust kose) ====================
+_weather = {"temp": None, "ts": 0.0}
+_WEATHER_REFRESH = 900          # 15 dk
+# Ankara koordinati (Open-Meteo - anahtarsiz, hizli, guvenilir)
+_WEATHER_LAT = 39.93
+_WEATHER_LON = 32.86
+
+
+def _weather_worker():
+    """Arka planda hava sicakligini ceker (Open-Meteo, anahtarsiz).
+    Internet yoksa/yavassa uygulamayi ETKILEMEZ - deger bos kalir."""
+    import urllib.request
+    import json as _json
+    url = (f"https://api.open-meteo.com/v1/forecast"
+           f"?latitude={_WEATHER_LAT}&longitude={_WEATHER_LON}"
+           f"&current=temperature_2m&timezone=Europe%2FIstanbul")
+    while _state.get("running", True):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "vumeter/1.0"})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                data = _json.loads(r.read().decode("utf-8", "ignore"))
+            t = data.get("current", {}).get("temperature_2m")
+            if t is not None:
+                _weather["temp"] = int(round(float(t)))
+                _weather["ts"] = time.time()
+        except Exception:
+            pass        # sessizce gec (internet yok / API kapali vs.)
+        for _ in range(_WEATHER_REFRESH):
+            if not _state.get("running", True):
+                return
+            time.sleep(1)
+
+
+def draw_weather(surf):
+    """Sol UST koseye kucuk soluk sicaklik yaz (tum modlarda).
+    Sol kose = tiz bolge -> barlar kisa kalir, cakismaz."""
+    t = _weather.get("temp")
+    if t is None:
+        return
+    f = _sm_font(22)
+    txt = f"{t}°"
+    s = f.render(txt, True, (150, 165, 180))
+    s.set_alpha(190)
+    surf.blit(s, (18, 12))
+
+
 def _get_sysmon():
     global _sysmon_instance
     if _sysmon_instance is None and _sysmon_mod is not None:
@@ -1131,6 +1177,9 @@ def main():
     # shared memory + sender process
     shm = shared_memory.SharedMemory(create=True, size=WIDTH*HEIGHT*3)
     frame_counter = mp.Value("q", 0, lock=False)
+    # hava durumu thread'i (arka planda, uygulamayi bloklamaz)
+    threading.Thread(target=_weather_worker, daemon=True).start()
+
     bright_val = mp.Value('i', int(_state.get("brightness", 100)))
     send_proc = mp.Process(target=sender_process_main,
                           args=(shm.name, frame_counter, WIDTH, HEIGHT, bright_val),
@@ -1161,6 +1210,9 @@ def main():
                 draw_meter_panel(surf, snap)
             else:
                 draw_spectrum(surf, snap, COLOR_THEME_NAMES[_state["theme_idx"]], FPS)
+
+            # HAVA SICAKLIGI (tum modlarda sol ust kose)
+            draw_weather(surf)
 
             # surface -> shared memory (ham RGB)
             raw = pygame.image.tostring(surf, "RGB")
