@@ -2,7 +2,9 @@
 """WINDOWS LCD: Native 1920x462 yatay cizim + trcc HTTP API gonderim.
 
 Akis: WASAPI loopback -> ana dongu native ciz -> shared_memory -> ayri
-sender process -> trcc API display/theme -> panel (native, net, akici).
+sender process -> DOGRUDAN USB (trcc_direct) -> panel.
+
+trcc / HTTP / PNG / disk YOK -> aninda acilir, yuksek FPS, antivirus etkisi yok.
 
 GEREKSINIM:
   - trcc kurulu (Program Files/TRCC)
@@ -877,28 +879,33 @@ def draw_spectrum(surf, cava_bars, theme_name, fps):
 
 
 # ==================== API SENDER (ayri process) ====================
-def sender_process_main(shm_name, frame_counter, w, h, api_base, key, theme_dir):
-    """Ayri surec: shared memory'den kareyi al -> PNG yaz -> trcc API'ye bildir.
-    Windows: multiprocessing SPAWN kullanir (modul yeniden import edilir)."""
-    # pencere modu exe'de bu surecin stdout'u None olabilir -> log dosyasina yaz
+def sender_process_main(shm_name, frame_counter, w, h, *_unused):
+    """Ayri surec: shared memory'den kareyi al -> DOGRUDAN USB ile panele yaz.
+    trcc / HTTP / PNG / disk YOK. (trcc_direct.py protokolu kullanir)"""
     if sys.stdout is None:
-        sys.stdout = _LogIO(_LOG_PATH)
+        sys.stdout = _NullIO()
     if sys.stderr is None:
-        sys.stderr = sys.stdout
-    import requests as rq
+        sys.stderr = _NullIO()
+
     import pygame as pg
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pg.display.init()
+
+    from trcc_direct import TrccDirect
+    dev = TrccDirect()
+    try:
+        dev.connect()
+    except Exception as e:
+        print(f"[sender] PANEL BAGLANTI HATASI: {e}")
+        print("[sender] trcc calisiyor olabilir -> 'trcc kill' yapip tekrar dene")
+        return
+
     shm = shared_memory.SharedMemory(name=shm_name)
-    session = rq.Session()
-    png_path = os.path.join(theme_dir, "00.png")
-    tmp_path = os.path.join(theme_dir, "_tmp.png")
-    url = f"{api_base}/devices/{key}/display/theme"
-    print(f"[sender] basladi. PNG: {png_path}")
+    print("[sender] dogrudan USB akisi basladi.")
     last = -1
-    errs = 0
     sent = 0
+    errs = 0
     win_t0 = time.time()
     win_sent = 0
     try:
@@ -910,161 +917,44 @@ def sender_process_main(shm_name, frame_counter, w, h, api_base, key, theme_dir)
                 last = cur
                 raw = bytes(shm.buf[:w * h * 3])
                 try:
-                    t_a = time.time()
                     surf = pg.image.frombuffer(raw, (w, h), "RGB")
-                    pg.image.save(surf, tmp_path)
-                    os.replace(tmp_path, png_path)      # atomik
-                    t_b = time.time()
-                    session.post(url, json={"path": theme_dir}, timeout=8.0)
-                    t_c = time.time()
+                    dev.send_surface(surf)
                     sent += 1
                     win_sent += 1
-                    post_ms = (t_c - t_b) * 1000
-                    if post_ms > 300:      # YAVAS POST -> donma sebebi
-                        print(f"[sender] YAVAS POST: {post_ms:.0f} ms (donma!)")
-                    # saniyelik ozet
-                    if t_c - win_t0 >= 2.0:
-                        print(f"[sender] panele giden: {win_sent/(t_c-win_t0):.1f} FPS "
-                              f"(png {(t_b-t_a)*1000:.0f}ms, post {post_ms:.0f}ms)")
-                        win_t0 = t_c
+                    now = time.time()
+                    if now - win_t0 >= 5.0:
+                        print(f"[sender] panele giden: {win_sent/(now-win_t0):.1f} FPS")
+                        win_t0 = now
                         win_sent = 0
                 except Exception as e:
                     errs += 1
-                    if errs <= 3 or errs % 20 == 0:
-                        print(f"[sender] HATA #{errs}: {type(e).__name__}")
+                    if errs <= 3 or errs % 50 == 0:
+                        print(f"[sender] HATA #{errs}: {type(e).__name__}: {e}")
+                    time.sleep(0.05)
             else:
-                time.sleep(0.003)
+                time.sleep(0.002)
     finally:
         shm.close()
+        try:
+            dev.close()
+        except Exception:
+            pass
         print(f"[sender] bitti. gonderilen: {sent}, hata: {errs}")
 
 
 def api_setup():
-    """trcc serve baslat + connect + overlay kapat + tema klasoru hazirla.
-
-    WINDOWS NOTLARI (olculerek bulundu):
-      - connect ILK cagrida sensor hatti yuzunden takilabilir -> KISA timeout
-        + hatayi YUT (baglanti yine de kuruluyor).
-      - overlay KAPATILMALI, yoksa trcc her karede sensor arar (10sn bekler).
-      - trcc.json BOM'suz olmali, 'config.json' degil 'trcc.json' isteniyor.
-      - theme path TAM YOL olarak verilmeli.
-    """
-    import requests as rq
-    session = rq.Session()
-
-    # --- serve calisiyor mu ---
+    """DOGRUDAN USB modunda trcc'ye ihtiyac YOK.
+    Sadece trcc'nin USB'yi tutmadigindan emin oluruz."""
+    # Calisan trcc varsa kapat (USB'yi birakmasi icin - ayni anda ikisi olmaz)
     try:
-        session.get(f"{API_BASE}/health", timeout=2)
-        print("trcc serve zaten calisiyor.")
+        subprocess.run(["trcc", "kill"], timeout=8,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        print("trcc kapatildi (USB serbest).")
     except Exception:
-        print("trcc serve baslatiliyor (gizli)...")
-        # PENCERE GIZLEME: DETACHED_PROCESS kullanma! Konsol uygulamasi olan
-        # trcc.exe detached baslatilinca KENDI konsolunu acar (siyah pencere).
-        # Dogrusu: CREATE_NO_WINDOW + STARTUPINFO(SW_HIDE)
-        _flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        _flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-
-        _si = subprocess.STARTUPINFO()
-        _si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        _si.wShowWindow = 0   # SW_HIDE
-
-        _state["_serve_proc"] = subprocess.Popen(
-            ["trcc", "serve", "--port", "8080"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            creationflags=_flags, startupinfo=_si)
-        for _ in range(20):
-            time.sleep(1)
-            try:
-                session.get(f"{API_BASE}/health", timeout=2)
-                print("trcc serve hazir.")
-                break
-            except Exception:
-                continue
-        else:
-            print("UYARI: trcc serve baslatilamadi (yonetici misin?)")
-            return False
-
-    # --- tema klasoru: BOM'suz trcc.json + temizlik ---
-    os.makedirs(THEME_DIR, exist_ok=True)
-    import glob
-    for old in glob.glob(os.path.join(THEME_DIR, "*.json")) + glob.glob(os.path.join(THEME_DIR, "*.dc")):
-        try:
-            os.remove(old)
-        except OSError:
-            pass
-    cfg = {
-        "name": "live_frame", "overlay_enabled": False, "rotation": 0,
-        "background_display": True, "transparent_display": False,
-        "mask_visible": False, "elements": [],
-    }
-    with open(os.path.join(THEME_DIR, "trcc.json"), "w", encoding="utf-8") as f:
-        json.dump(cfg, f)   # BOM YOK
-
-    # --- overlay KAPAT (sensor beklemesini onler - KRITIK) ---
-    try:
-        session.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/overlay",
-                     json={"enabled": False}, timeout=5)
-        print("overlay kapatildi (sensor beklemesi yok).")
-    except Exception as e:
-        print("overlay kapatilamadi:", e)
-
-    # --- connect: KISA timeout, hatayi yut (baglanti yine kuruluyor) ---
-    connected = False
-    for attempt in range(3):
-        try:
-            r = session.post(f"{API_BASE}/devices/{DEVICE_KEY}/connect", timeout=6)
-            msg = r.json().get("message", r.text)
-            if r.json().get("ok") or "Connected" in str(msg):
-                print("connect:", str(msg)[:60])
-                connected = True
-                break
-        except Exception as e:
-            # timeout / 500 -> zaten bagli olabilir, devam
-            print(f"connect deneme {attempt+1}: {type(e).__name__} (devam)")
-            connected = True   # baglanti muhtemelen kuruldu
-            break
-        time.sleep(2)
-
-    # --- fit-mode + parlaklik ---
-    for path, body in [
-        (f"/devices/{DEVICE_KEY}/display/fit-mode", {"mode": "stretch"}),
-        (f"/devices/{DEVICE_KEY}/display/brightness",
-         {"percent": _state.get("brightness", 100)}),
-    ]:
-        try:
-            session.post(API_BASE + path, json=body, timeout=5)
-        except Exception:
-            pass
-
-    # --- KRITIK: trcc'nin sensor doNGUSUNU seyreklestir ---
-    # trcc her 2 sn'de sensor okumaya calisir, LHM'yi 10 sn bekler -> sunucu
-    # tikanir, bizim kareler kuyruga girer. Araligi buyutunce sorun kalkar.
-    try:
-        session.post(f"{API_BASE}/config/refresh-interval",
-                     json={"seconds": 3600}, timeout=5)
-        print("trcc sensor dongusu seyreklestirildi (3600s).")
-    except Exception as e:
-        print("refresh-interval ayarlanamadi:", e)
-
-    # --- ISINMA: ARKA PLANDA (uygulama aninda acilsin) ---
-    # trcc'nin ilk theme yuklemesi LHM yuzunden ~60sn surebiliyor. Bunu ana
-    # akisi bloklamadan arka planda yapiyoruz; panel hazir olunca canlanir.
-    def _warmup():
-        try:
-            import requests as _rq
-            os.makedirs(THEME_DIR, exist_ok=True)
-            print("isinma arka planda basladi (panel birkac saniye sonra canlanir)...")
-            t0 = time.time()
-            _rq.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/theme",
-                     json={"path": THEME_DIR}, timeout=120)
-            print("isinma tamam (%.1f sn) - panel hazir." % (time.time() - t0))
-        except Exception as e:
-            print("isinma uyarisi:", type(e).__name__)
-
-    threading.Thread(target=_warmup, daemon=True).start()
-
-    return connected
+        pass   # trcc kurulu degilse sorun yok - zaten gerekmiyor
+    time.sleep(0.5)
+    return True
 
 
 def build_tray():
@@ -1284,8 +1174,7 @@ def main():
     shm = shared_memory.SharedMemory(create=True, size=WIDTH*HEIGHT*3)
     frame_counter = mp.Value("q", 0, lock=False)
     send_proc = mp.Process(target=sender_process_main,
-                          args=(shm.name, frame_counter, WIDTH, HEIGHT,
-                                API_BASE, DEVICE_KEY, THEME_DIR), daemon=True)
+                          args=(shm.name, frame_counter, WIDTH, HEIGHT), daemon=True)
     send_proc.start()
 
     print(f"Baslatildi. Native {WIDTH}x{HEIGHT}, {FPS} FPS, {_state['mode']}. Ctrl+C ile cik.")
@@ -1313,6 +1202,15 @@ def main():
             else:
                 draw_spectrum(surf, snap, COLOR_THEME_NAMES[_state["theme_idx"]], FPS)
 
+            # yazilimsal parlaklik (dogrudan USB'de donanim komutu yok;
+            # trcc de piksel bazinda karartiyor)
+            _b = _state.get("brightness", 100)
+            if _b < 100:
+                _dark = pygame.Surface((WIDTH, HEIGHT))
+                _dark.fill((0, 0, 0))
+                _dark.set_alpha(int((100 - _b) * 2.55))
+                surf.blit(_dark, (0, 0))
+
             # surface -> shared memory (ham RGB)
             raw = pygame.image.tostring(surf, "RGB")
             shm.buf[:len(raw)] = raw
@@ -1322,15 +1220,9 @@ def main():
             # tray olaylarini isle
             if qt_app is not None:
                 qt_app.processEvents()
-            # parlaklik degistiyse API'ye gonder
-            if _state.get("brightness_changed"):
-                _state["brightness_changed"] = False
-                try:
-                    import requests as _rq
-                    _rq.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/brightness",
-                             json={"percent": _state["brightness"]}, timeout=2)
-                except Exception:
-                    pass
+            # parlaklik: DOGRUDAN USB'de donanim komutu yok -> yazilimsal
+            # karartma yapiyoruz (trcc de ayni sekilde yapiyor: piksel bazinda)
+            _state["brightness_changed"] = False
 
             # FPS sinirla
             dt = 1.0 / FPS
@@ -1345,13 +1237,14 @@ def main():
         print("\nCikiliyor...")
     finally:
         _state["running"] = False
-        # Cikista paneli TEMIZLE (eski goruntu donuk kalmasin) - siyah kare gonder
+        # Cikista paneli TEMIZLE: siyah kareyi shared memory'ye yaz, sender gondersin
         try:
-            import requests as _rq
-            black = pygame.Surface((WIDTH, HEIGHT)); black.fill((0, 0, 0))
-            pygame.image.save(black, os.path.join(THEME_DIR, "00.png"))
-            _rq.post(f"{API_BASE}/devices/{DEVICE_KEY}/display/theme",
-                     json={"path": "live_frame"}, timeout=2)
+            black = pygame.Surface((WIDTH, HEIGHT))
+            black.fill((0, 0, 0))
+            shm.buf[:WIDTH*HEIGHT*3] = pygame.image.tostring(black, "RGB")
+            frames += 1
+            frame_counter.value = frames
+            time.sleep(0.4)          # sender'in gondermesini bekle
         except Exception:
             pass
         frame_counter.value = -1

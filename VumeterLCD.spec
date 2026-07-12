@@ -34,6 +34,7 @@ a = Analysis(
         # runtime import edilen moduller
         ('control_window.py', '.'),
         ('sysmon_win.py', '.'),
+        ('trcc_direct.py', '.'),        # DOGRUDAN USB surucusu
     ],
     hiddenimports=[
         # ses (WASAPI loopback)
@@ -45,15 +46,17 @@ a = Analysis(
         'clr',
         'pythonnet',
         'clr_loader',
-        # HTTP (trcc API)
-        'requests',
-        'urllib3',
-        'charset_normalizer',
-        'idna',
-        'certifi',
+        # DOGRUDAN USB (trcc gerekmez)
+        'usb',
+        'usb.core',
+        'usb.util',
+        'usb.backend',
+        'usb.backend.libusb1',
+        'trcc_direct',
         # runtime moduller
         'control_window',
         'sysmon_win',
+        'trcc_direct',
         # arayuz
         'PyQt5.QtCore',
         'PyQt5.QtGui',
