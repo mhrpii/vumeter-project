@@ -875,9 +875,14 @@ def draw_spectrum(surf, cava_bars, theme_name, fps):
 
 
 # ==================== API SENDER (ayri process) ====================
-def sender_process_main(shm_name, frame_counter, w, h, *_unused):
+def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
     """Ayri surec: shared memory'den kareyi al -> DOGRUDAN USB ile panele yaz.
-    trcc / HTTP / PNG / disk YOK. (trcc_direct.py protokolu kullanir)"""
+    trcc / HTTP / PNG / disk YOK. (trcc_direct.py protokolu kullanir)
+
+    PARLAKLIK: panelin protokolunde donanimsal parlaklik komutu YOK
+    (trcc kaynagi: "the device protocol has no separate brightness command").
+    trcc de yazilimsal karartma yapiyordu -> biz de ayni sekilde kareyi
+    gonderemeden once karartiyoruz (brightness: mp.Value, 10-100)."""
     import pygame as pg
     # mixer'siz init (ses aygiti acmasin - LG OSD tetiklemesin)
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -909,6 +914,15 @@ def sender_process_main(shm_name, frame_counter, w, h, *_unused):
                 raw = bytes(shm.buf[:w * h * 3])
                 try:
                     surf = pg.image.frombuffer(raw, (w, h), "RGB")
+                    # yazilimsal parlaklik (donanimda yok - trcc de boyle yapiyordu)
+                    if brightness is not None:
+                        b = brightness.value
+                        if b < 100:
+                            surf = surf.copy()
+                            dim = pg.Surface((w, h))
+                            dim.fill((0, 0, 0))
+                            dim.set_alpha(int(255 * (100 - max(10, min(100, b))) / 100))
+                            surf.blit(dim, (0, 0))
                     dev.send_surface(surf)
                     win_sent += 1
                     now = time.time()
@@ -1117,8 +1131,10 @@ def main():
     # shared memory + sender process
     shm = shared_memory.SharedMemory(create=True, size=WIDTH*HEIGHT*3)
     frame_counter = mp.Value("q", 0, lock=False)
+    bright_val = mp.Value('i', int(_state.get("brightness", 100)))
     send_proc = mp.Process(target=sender_process_main,
-                          args=(shm.name, frame_counter, WIDTH, HEIGHT), daemon=True)
+                          args=(shm.name, frame_counter, WIDTH, HEIGHT, bright_val),
+                          daemon=True)
     send_proc.start()
 
     print(f"Baslatildi. Native {WIDTH}x{HEIGHT}, {FPS} FPS, Spektrum. Ctrl+C ile cik.")
@@ -1155,10 +1171,13 @@ def main():
             # tray olaylarini isle
             if qt_app is not None:
                 qt_app.processEvents()
-            # NOT: parlaklik trcc HTTP API ozelligiydi; dogrudan USB protokolunde
-            # parlaklik komutu yok. Bayrak temizlenir (menu calisir ama etkisiz).
+            # parlaklik degistiyse sender'a bildir (yazilimsal karartma)
             if _state.get("brightness_changed"):
                 _state["brightness_changed"] = False
+                try:
+                    bright_val.value = int(_state.get("brightness", 100))
+                except Exception:
+                    pass
 
             # FPS sinirla
             dt = 1.0 / FPS
