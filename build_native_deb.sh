@@ -13,7 +13,6 @@ mkdir -p "$ROOT/opt/vumeter-lcd-native"
 mkdir -p "$ROOT/usr/bin"
 mkdir -p "$ROOT/usr/share/applications"
 mkdir -p "$ROOT/etc/xdg/autostart"
-mkdir -p "$ROOT/lib/udev/rules.d"
 mkdir -p "$ROOT/DEBIAN"
 
 echo "== Dosyalari kopyala =="
@@ -27,13 +26,6 @@ cp "$SRC/vu_bg3.png"        "$ROOT/opt/vumeter-lcd-native/"
 
 # dosya izinleri (sysmon.py bazen -rw------- geliyor -> import PermissionError)
 chmod 644 "$ROOT/opt/vumeter-lcd-native/"*.py "$ROOT/opt/vumeter-lcd-native/"*.png
-
-echo "== udev kurali (panele root'suz USB erisimi) =="
-cat > "$ROOT/lib/udev/rules.d/99-trcc-lcd.rules" << 'EOF'
-# Thermalright Trofeo Vision LCD - kullanici erisimi (dogrudan USB icin)
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5408", MODE="0666", TAG+="uaccess"
-EOF
-chmod 644 "$ROOT/lib/udev/rules.d/99-trcc-lcd.rules"
 
 echo "== control =="
 cat > "$ROOT/DEBIAN/control" << 'EOF'
@@ -97,7 +89,13 @@ SUBSYSTEM=="powercap", ACTION=="add", RUN+="/bin/chmod -R a+r /sys/devices/virtu
 RULE
 chmod -R a+r /sys/class/powercap/intel-rapl* 2>/dev/null || true
 
-# udev kurallarini yukle (LCD USB erisimi + powercap)
+# LCD USB erisimi: kullanici panele root'suz yazabilsin.
+# NOT: trcc-linux paketi 99-trcc-lcd.rules sagliyor olabilir; cakismamak icin
+# kendi kuralimizi FARKLI isimle yaziyoruz (ikisi bir arada zararsiz).
+cat > /etc/udev/rules.d/99-vumeter-lcd.rules << 'RULE'
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5408", MODE="0666", TAG+="uaccess"
+RULE
+
 udevadm control --reload-rules 2>/dev/null || true
 udevadm trigger 2>/dev/null || true
 
@@ -124,6 +122,15 @@ pkill -f native_proto.py 2>/dev/null || true
 exit 0
 EOF
 chmod +x "$ROOT/DEBIAN/prerm"
+
+echo "== postrm (kendi udev kuralimizi temizle) =="
+cat > "$ROOT/DEBIAN/postrm" << 'EOF'
+#!/bin/bash
+rm -f /etc/udev/rules.d/99-vumeter-lcd.rules 2>/dev/null || true
+udevadm control --reload-rules 2>/dev/null || true
+exit 0
+EOF
+chmod +x "$ROOT/DEBIAN/postrm"
 
 echo "== paketle =="
 dpkg-deb --build --root-owner-group "$ROOT" "$HOME/vumeter-deb-build/vumeter-lcd-native_${VER}.deb"
