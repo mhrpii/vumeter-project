@@ -927,40 +927,73 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
 
     PARLAKLIK: panelin protokolunde donanimsal parlaklik komutu YOK
     (trcc kaynagi: "the device protocol has no separate brightness command").
-    trcc de yazilimsal karartma yapiyordu -> biz de ayni sekilde kareyi
-    gonderemeden once karartiyoruz (brightness: mp.Value, 10-100)."""
+    trcc de yazilimsal karartma yapiyordu -> biz de kareyi gondermeden once
+    karartiyoruz (brightness: mp.Value, 10-100).
+
+    OTOMATIK YENIDEN BAGLANMA: panel takili degilken uygulama acilirsa ya da
+    kablo cikip takilirsa, 5 sn'de bir yeniden baglanmayi dener. Boylece
+    "acilista panel yoktu -> sonra taktim, calismadi" durumu yasanmaz."""
     import pygame as pg
-    # mixer'siz init (ses aygiti acmasin - LG OSD tetiklemesin)
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     pg.display.init()
 
     from trcc_direct import TrccDirect
-    dev = TrccDirect()
-    try:
-        dev.connect()
-    except Exception as e:
-        print(f"[sender] PANEL BAGLANTI HATASI: {e}")
-        print("[sender] trcc calisiyor olabilir -> 'pkill -f trcc' yapip tekrar dene")
-        return
 
     shm = shared_memory.SharedMemory(name=shm_name)
-    print("[sender] dogrudan USB akisi basladi.")
+    dev = None
     last = -1
     errs = 0
     win_t0 = time.time()
     win_sent = 0
+    next_try = 0.0
+    announced_wait = False
+
+    def _disconnect():
+        nonlocal dev
+        if dev is not None:
+            try:
+                dev.close()
+            except Exception:
+                pass
+        dev = None
+
     try:
         while True:
             cur = frame_counter.value
             if cur == -1:
                 break
+
+            # --- BAGLI DEGILSE: periyodik yeniden deneme ---
+            if dev is None:
+                now = time.time()
+                if now < next_try:
+                    time.sleep(0.2)
+                    continue
+                next_try = now + 5.0
+                try:
+                    d = TrccDirect()
+                    d.connect()
+                    dev = d
+                    errs = 0
+                    announced_wait = False
+                    win_t0 = time.time()
+                    win_sent = 0
+                    last = -1                 # ilk kareyi hemen gonder
+                    print("[sender] panel baglandi - USB akisi basladi.")
+                except Exception as e:
+                    if not announced_wait:
+                        print(f"[sender] panel yok ({type(e).__name__}) - "
+                              f"takilinca otomatik baglanacak, 5sn'de bir denenecek.")
+                        announced_wait = True
+                    continue
+
+            # --- BAGLI: kare gonder ---
             if cur != last:
                 last = cur
                 raw = bytes(shm.buf[:w * h * 3])
                 try:
                     surf = pg.image.frombuffer(raw, (w, h), "RGB")
-                    # yazilimsal parlaklik (donanimda yok - trcc de boyle yapiyordu)
                     if brightness is not None:
                         b = brightness.value
                         if b < 100:
@@ -970,6 +1003,7 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                             dim.set_alpha(int(255 * (100 - max(10, min(100, b))) / 100))
                             surf.blit(dim, (0, 0))
                     dev.send_surface(surf)
+                    errs = 0
                     win_sent += 1
                     now = time.time()
                     if now - win_t0 >= 10.0:
@@ -978,17 +1012,21 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                         win_sent = 0
                 except Exception as e:
                     errs += 1
-                    if errs <= 3 or errs % 50 == 0:
-                        print(f"[sender] HATA #{errs}: {type(e).__name__}: {e}")
-                    time.sleep(0.05)
+                    if errs <= 3:
+                        print(f"[sender] gonderim hatasi #{errs}: {type(e).__name__}: {e}")
+                    # ust uste hata -> baglanti kopmus say, yeniden baglan
+                    if errs >= 5:
+                        print("[sender] baglanti koptu - yeniden baglanmaya calisilacak.")
+                        _disconnect()
+                        next_try = time.time() + 2.0
+                        errs = 0
+                    else:
+                        time.sleep(0.05)
             else:
                 time.sleep(0.002)
     finally:
         shm.close()
-        try:
-            dev.close()
-        except Exception:
-            pass
+        _disconnect()
 
 
 # ==================== TRAY MENU (PyQt5) ====================
