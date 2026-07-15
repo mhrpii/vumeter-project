@@ -557,6 +557,7 @@ def draw_sysmon(surf, fps):
     cpu_t = d.get("cpu_pkg"); cores = d.get("cores_max")
     gpu_j = d.get("gpu_junction") or d.get("gpu_temp"); gpu_e = d.get("gpu_edge"); gpu_m = d.get("gpu_mem")
     vrm = d.get("mb_vrm"); pch = d.get("mb_pch"); mbsys = d.get("mb_system")
+    gmhz = d.get("gpu_mem_clock"); vcore = d.get("cpu_voltage")   # GMem->GMHz, VRM->VCore
     use = d.get("cpu_usage"); gpu_u = d.get("gpu_usage")
     ram = d.get("ram_pct"); frq = d.get("cpu_freq")
     cpu_p = d.get("cpu_power"); gpu_p = d.get("gpu_power")
@@ -581,8 +582,8 @@ def draw_sysmon(surf, fps):
         ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
         ("GPU",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C",  (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
         ("GEdge",f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C",  (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
-        ("GMem", f"{gpu_m:.0f}"  if gpu_m is not None else "--", "C",  (gpu_m/100.0)  if gpu_m else 0, col(gpu_m)),
-        ("VRM",  f"{vrm:.0f}"    if vrm is not None else "--",   "C",  (vrm/100.0)    if vrm else 0,   col(vrm)),
+        ("GBellek", f"{gmhz/1000:.1f}" if gmhz else "--", "GHz", (gmhz/3000.0) if gmhz else 0, GREEN),
+        ("VCore", f"{vcore:.2f}"       if vcore else "--", "V",   (vcore/1.5)   if vcore else 0, GREEN),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C",  (pch/90.0)     if pch else 0,   col(pch)),
         ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C",  (mbsys/90.0)   if mbsys else 0, col(mbsys)),
         ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",   (cfan/3000.0)  if cfan else 0, GREEN),

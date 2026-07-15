@@ -62,7 +62,7 @@ _SMC_KEYS = [
     "TC1C", "TC2C", "TC3C", "TC4C", "TC5C", "TC6C", "TC7C",  # cekirdekler
     "PCPT",  # CPU toplam guc (W)
     "PCPC",  # CPU core guc (W)
-    "VC0C",  # CPU voltaj
+    "VC0C",  # CPU voltaj (V)
     "F0Ac", "F1Ac", "F2Ac", "F3Ac", "F4Ac",  # 5 fan
 ]
 
@@ -241,8 +241,9 @@ class SysMonitor:
             d["mb_system"] = smc.get("TC0D")        # CPU die (ikinci sicaklik)
             d["mb_pch"] = smc.get("TC0H")           # CPU heatsink (ucuncu)
 
-            # --- guc ---
+            # --- guc + voltaj ---
             d["cpu_power"] = smc.get("PCPT")        # CPU toplam guc (W)
+            d["cpu_voltage"] = smc.get("VC0C")      # CPU voltaj (V) -> VCore
 
             # --- fanlar (5 fan: F0-F4) ---
             fan_keys_out = ["fan_cpu", "fan_pump", "fan_sys1", "fan_sys2", "fan_sys3"]
@@ -283,6 +284,8 @@ class SysMonitor:
                     d["gpu_vram_total"] = (used + free) / 1024.0  # GB
                 # GPU fan (varsa)
                 d["gpu_fan_rpm"] = int(g["fan"]) if g.get("fan") else None
+                # GPU memory clock (MHz) -> GMHz gauge
+                d["gpu_mem_clock"] = g.get("memclock")
 
             # diskler yavas isinir -> 10 sn'de bir oku (disk_read ~1sn surer)
             now = time.time()
