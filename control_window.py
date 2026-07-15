@@ -120,7 +120,17 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 sub_layout.addWidget(b); _sub_btns.append(b)
-        else:  # Sistem Monitoru - secenek yok
+        elif m == "Sistem Monitoru":
+            grp = QButtonGroup(w); grp.setExclusive(True)
+            for i, pn in enumerate(("Sensorler", "Disk Sicakliklari", "Cekirdek Isi Haritasi")):
+                b = QPushButton(pn); b.setCheckable(True)
+                b.setChecked(state.get("sysmon_page", 0) == i)
+                def mk(idx):
+                    def _f(): state["sysmon_page"] = idx
+                    return _f
+                b.clicked.connect(mk(i)); grp.addButton(b)
+                sub_layout.addWidget(b); _sub_btns.append(b)
+        else:
             lbl = QLabel("Bu modun ek secenegi yok."); lbl.setStyleSheet(f"color:{DIM};")
             sub_layout.addWidget(lbl); _sub_btns.append(lbl)
 
