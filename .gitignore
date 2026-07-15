@@ -31,3 +31,7 @@ gpu_read
 disk_read
 disk_read_dbg
 guts_test
+disk_read_dbg.c
+guts_test.c
+disk_read_dbg
+guts_test
