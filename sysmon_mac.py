@@ -301,6 +301,11 @@ class SysMonitor:
                 d["cpu_power"] = self._ipg["pkg_power"]
             if self._ipg.get("pkg_temp"):
                 d["cpu_pkg"] = self._ipg["pkg_temp"]
+            # Cekirdek max: SMC'nin 8'i yerine Intel'in 24 cekirdeginin en sicagi
+            ipg_cores = self._ipg.get("cores") or []
+            core_temps = [t for (_, _, t) in ipg_cores if t and t > 0]
+            if core_temps:
+                d["cores_max"] = max(core_temps)
 
             with self._lock:
                 self._data = d
