@@ -9,32 +9,67 @@ echo "  VU Meter LCD — Mac Kurulum"
 echo "=================================================="
 echo ""
 
+# macOS surumu tespit (12 ve oncesi Homebrew Tier 3 - cava kurulamaz)
+OSVER="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+ESKI_MACOS=0
+if [ -n "$OSVER" ] && [ "$OSVER" -le 12 ]; then
+    ESKI_MACOS=1
+    echo "[i] macOS $OSVER tespit edildi (eski surum)."
+    echo "    Homebrew bu surumde cava'yi kaynaktan derleyemeyebilir."
+    echo "    Sorun cikarsa README'deki 'macOS 12 elle kurulum' bolumune bak."
+    echo ""
+fi
+
 # --- 1) Homebrew ---
 if ! command -v brew >/dev/null 2>&1; then
     echo "[!] Homebrew yok. Kur: https://brew.sh"
-    read -p "Homebrew'suz cava/libusb kurulamaz. Enter ile devam..."
+    read -p "Enter ile devam..."
 else
-    echo "[✓] Homebrew bulundu."
+    echo "[OK] Homebrew bulundu."
 fi
 
 # --- 2) cava + libusb ---
 echo ""
 echo "[*] cava + libusb kuruluyor..."
-if command -v brew >/dev/null 2>&1; then
-    brew list cava   >/dev/null 2>&1 || brew install cava
-    brew list libusb >/dev/null 2>&1 || brew install libusb
-    echo "[✓] cava + libusb hazir."
+if command -v cava >/dev/null 2>&1; then
+    echo "[OK] cava zaten kurulu ($(command -v cava))."
+elif command -v brew >/dev/null 2>&1; then
+    if ! brew install cava 2>/dev/null; then
+        echo "[!] cava brew ile kurulamadi (muhtemelen eski macOS + gcc derleme sorunu)."
+        echo "    ELLE KURULUM: README'deki 'macOS 12 elle kurulum' bolumunu izle:"
+        echo "    - Calisan bir Mac'ten cava binary + dylib'leri kopyala, ya da"
+        echo "    - GitHub'dan cava'yi clang ile derle."
+    fi
+fi
+command -v brew >/dev/null 2>&1 && { brew list libusb >/dev/null 2>&1 || brew install libusb 2>/dev/null; }
+
+# --- 3) BlackHole kontrolu (ses yakalama icin) ---
+echo ""
+echo "[*] Ses yakalama (BlackHole) kontrol ediliyor..."
+if system_profiler SPAudioDataType 2>/dev/null | grep -qi "BlackHole"; then
+    echo "[OK] BlackHole kurulu."
+else
+    echo "[!] BlackHole KURULU DEGIL. Ses gorsellestirme icin gerekli."
+    echo "    macOS, hoparlorden calan sesi dogrudan yakalatmaz; BlackHole (sanal"
+    echo "    ses aygiti) gerekir."
+    echo "    1) Indir: https://existential.audio/blackhole/ (2ch) — .pkg installer"
+    echo "       ya da https://github.com/ExistentialAudio/BlackHole/releases"
+    echo "    2) Kur (.pkg cift tikla)."
+    echo "    3) Audio MIDI Setup -> + -> Create Multi-Output Device"
+    echo "       -> Built-in Output + BlackHole 2ch isaretle"
+    echo "    4) Sistem ses cikisini 'Multi-Output Device' yap."
+    echo "    (Detay: README 'Ses kurulumu' bolumu)"
 fi
 
-# --- 3) Python kutuphaneleri ---
+# --- 4) Python kutuphaneleri ---
 echo ""
 echo "[*] Python kutuphaneleri kuruluyor..."
 PYBIN="$(command -v python3)"
 [ -z "$PYBIN" ] && { echo "[!] python3 yok: xcode-select --install"; read -p "Enter..."; }
 "$PYBIN" -m pip install --user pygame PyQt5 numpy psutil pyusb 2>&1 | tail -2
-echo "[✓] Python kutuphaneleri hazir."
+echo "[OK] Python kutuphaneleri hazir."
 
-# --- 4) C araclarini derle ---
+# --- 5) C araclarini derle ---
 echo ""
 echo "[*] C sensor araclari derleniyor..."
 compile() {
@@ -52,14 +87,13 @@ else
     echo "    [!] Intel Power Gadget yok — cekirdek isi haritasi calismaz (opsiyonel)."
 fi
 
-# --- 5) .app bundle olustur ---
+# --- 6) .app bundle olustur ---
 echo ""
 echo "[*] Uygulama (.app) olusturuluyor..."
 APP="/Applications/VU Meter LCD.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources/app"
-
 cp *.py                                 "$APP/Contents/Resources/app/" 2>/dev/null
 cp *.c                                  "$APP/Contents/Resources/app/" 2>/dev/null
 cp smc_read gpu_read disk_read ipg_read "$APP/Contents/Resources/app/" 2>/dev/null
@@ -95,20 +129,16 @@ LAUNCH
 chmod +x "$APP/Contents/MacOS/launcher"
 
 if [ -f "app_icon_1024.png" ]; then
-    TMP="$(mktemp -d)"
-    ICONSET="$TMP/appicon.iconset"
-    mkdir -p "$ICONSET"
+    TMP="$(mktemp -d)"; ICONSET="$TMP/appicon.iconset"; mkdir -p "$ICONSET"
     for sz in 16 32 64 128 256 512; do
         sips -z $sz $sz app_icon_1024.png --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null 2>&1
-        d=$((sz*2))
-        sips -z $d $d app_icon_1024.png --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
+        d=$((sz*2)); sips -z $d $d app_icon_1024.png --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
     done
     cp app_icon_1024.png "$ICONSET/icon_512x512@2x.png"
-    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/appicon.icns" 2>/dev/null \
-        && echo "    [OK] ikon olusturuldu" || echo "    [!] ikon olusturulamadi"
+    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/appicon.icns" 2>/dev/null
+    # ikonu zorla uygula (onbellek atlatma)
+    command -v fileicon >/dev/null 2>&1 && fileicon set "$APP" app_icon_1024.png >/dev/null 2>&1
 fi
-
-# Finder ikonu tazelesin
 touch "$APP"
 
 echo "[OK] Uygulama kuruldu: $APP"
@@ -116,11 +146,10 @@ echo ""
 echo "=================================================="
 echo "  Kurulum tamamlandi!"
 echo ""
-echo "  - Launchpad ya da Spotlight'ta 'VU Meter LCD' ara"
-echo "  - Paneli tak, uygulamaya cift tikla"
-echo ""
-echo "  Ilk acilista 'gelistirici dogrulanamadi' derse:"
-echo "  Sag tik -> Ac -> Ac"
+echo "  - Paneli tak, Launchpad/Spotlight'ta 'VU Meter LCD' ac"
+echo "  - Ses barlari icin: BlackHole + Multi-Output Device gerekli"
+echo "    (yukaridaki nota / README'ye bak)"
+echo "  - Ses gelmezse: sistem cikisi 'Multi-Output Device' olmali"
 echo "=================================================="
 echo ""
 read -p "Kapatmak icin Enter..."
