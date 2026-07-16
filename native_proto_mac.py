@@ -70,14 +70,28 @@ def _detect_mac_audio_source():
                     return n
         return None
 
-    # cava sanal/giris aygitini dinleyebilir; Multi-Output ya da fiziksel cikisi DINLEYEMEZ.
-    # Oncelik: BlackHole/loopback (sistem sesini yakalar) > Scarlett/arayuz > varsayilan > ilk
-    src = (pick(["BlackHole", "Soundflower", "Loopback"])
-           or pick(["Scarlett", "Focusrite"])
-           or (default_out if default_out and "Multi-Output" not in default_out
-                            and "Multi-Cikis" not in default_out else None)
-           or pick(["USB"])
-           or (names[0] if names else None))
+    # Mantik: cava, sesin GERCEKTEN CIKTIGI aygiti dinlemeli.
+    # - Varsayilan cikis bir ses ARAYUZU ise (Scarlett/Focusrite/USB): onu dinle
+    #   (arayuzler hem cikis hem giris verir, cava dogrudan okur).
+    # - Varsayilan cikis Multi-Output ya da dahili hoparlor ise: cava onu dinleyemez;
+    #   BlackHole/loopback (sistem sesini yakalayan sanal aygit) dinlenmeli.
+    is_interface = default_out and any(k in default_out
+        for k in ("Scarlett", "Focusrite", "USB", "Interface"))
+    is_multi_or_builtin = default_out and any(k in default_out
+        for k in ("Multi-Output", "Multi-Cikis", "Built-in", "Dahili", "MacBook", "Hoparlor"))
+
+    if is_interface:
+        # Scarlett gibi arayuz dogrudan dinlenir
+        src = default_out
+    elif is_multi_or_builtin:
+        # hoparlor/multi-output -> BlackHole gerekli
+        src = (pick(["BlackHole", "Soundflower", "Loopback"]) or default_out)
+    else:
+        # bilinmeyen: once arayuz, sonra BlackHole, sonra varsayilan
+        src = (pick(["Scarlett", "Focusrite"])
+               or pick(["BlackHole", "Soundflower", "Loopback"])
+               or default_out
+               or (names[0] if names else None))
     if not src:
         src = "default"
     _MAC_AUDIO_CACHE["src"] = src
@@ -1178,6 +1192,23 @@ def build_tray():
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    # macOS: Dock'ta gorunme (sadece menu cubugu tray) -> Python roket ikonu gizlenir
+    if sys.platform == "darwin":
+        try:
+            # NSApplicationActivationPolicyAccessory = 1 (Dock'ta yok, menu cubugu var)
+            import ctypes, ctypes.util
+            objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+            objc.objc_getClass.restype = ctypes.c_void_p
+            objc.sel_registerName.restype = ctypes.c_void_p
+            objc.objc_msgSend.restype = ctypes.c_void_p
+            objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            NSApplication = objc.objc_getClass(b"NSApplication")
+            sharedApp = objc.objc_msgSend(NSApplication, objc.sel_registerName(b"sharedApplication"))
+            # setActivationPolicy: 1 (accessory)
+            objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long]
+            objc.objc_msgSend(sharedApp, objc.sel_registerName(b"setActivationPolicy:"), 1)
+        except Exception:
+            pass
 
     def make_icon():
         pm = QPixmap(64, 64); pm.fill(QColor(20, 22, 26))
