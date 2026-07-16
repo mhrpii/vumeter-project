@@ -70,9 +70,13 @@ def _detect_mac_audio_source():
                     return n
         return None
 
-    src = (default_out
-           or pick(["Scarlett", "Focusrite", "USB", "Speakers", "Hoparlor"])
-           or pick(["BlackHole", "Soundflower", "Loopback", "Aggregate"])
+    # cava sanal/giris aygitini dinleyebilir; Multi-Output ya da fiziksel cikisi DINLEYEMEZ.
+    # Oncelik: BlackHole/loopback (sistem sesini yakalar) > Scarlett/arayuz > varsayilan > ilk
+    src = (pick(["BlackHole", "Soundflower", "Loopback"])
+           or pick(["Scarlett", "Focusrite"])
+           or (default_out if default_out and "Multi-Output" not in default_out
+                            and "Multi-Cikis" not in default_out else None)
+           or pick(["USB"])
            or (names[0] if names else None))
     if not src:
         src = "default"
