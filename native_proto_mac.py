@@ -1267,7 +1267,7 @@ def build_tray():
         a = QAction(f"Kadran {i+1}", menu); a.triggered.connect(mk_vu(i)); vum.addAction(a)
 
     # Olcum Paneli -> sayfalar
-    olcp = menu.addMenu("Olcum Paneli")
+    olcp = menu.addMenu("Ölçüm Paneli")
     pg_group = QActionGroup(menu); pg_group.setExclusive(True)
     def mk_page(idx):
         def _f(): _state["mode"] = "Olcum Paneli"; _state["meter_page"] = idx
@@ -1277,21 +1277,21 @@ def build_tray():
         a.triggered.connect(mk_page(i)); pg_group.addAction(a); olcp.addAction(a)
 
     # Sistem Monitoru (2 sayfa: Sensorler / Diskler)
-    smon_menu = menu.addMenu("Sistem Monitoru")
+    smon_menu = menu.addMenu("Sistem Monitörü")
     def mk_sysmon_page(p):
         def _f():
             _state["mode"] = "Sistem Monitoru"
             _state["sysmon_page"] = p
         return _f
     sp_group = QActionGroup(menu); sp_group.setExclusive(True)
-    for pi, pn in [(0, "Sensorler"), (1, "Disk Sicakliklari"), (2, "Cekirdek Isi Haritasi")]:
+    for pi, pn in [(0, "Sensörler"), (1, "Disk Sıcaklığı"), (2, "Çekirdek Isısı")]:
         a = QAction(pn, menu, checkable=True)
         a.setChecked(_state.get("mode")=="Sistem Monitoru" and _state.get("sysmon_page",0)==pi)
         a.triggered.connect(mk_sysmon_page(pi)); sp_group.addAction(a); smon_menu.addAction(a)
     menu.addSeparator()
 
     # Parlaklik (API'ye baglanir)
-    br_menu = menu.addMenu("Parlaklik")
+    br_menu = menu.addMenu("Parlaklık")
     br_group = QActionGroup(menu); br_group.setExclusive(True)
     def mk_br(p):
         def _f(): _state["brightness"] = p; _state["brightness_changed"] = True
@@ -1301,7 +1301,7 @@ def build_tray():
         a.triggered.connect(mk_br(p)); br_group.addAction(a); br_menu.addAction(a)
 
     menu.addSeparator()
-    qa = QAction("Cikis", menu)
+    qa = QAction("Çıkış", menu)
     def do_quit(): _state["running"] = False
     qa.triggered.connect(do_quit); menu.addAction(qa)
 
@@ -1313,6 +1313,31 @@ def build_tray():
         _led_texture_cache["surf"] = None
     def _vu_clear():
         _vu_scaled_cache.clear()
+    def _position_near_tray(w):
+        """Pencereyi tray ikonunun altina, SAG kenari tray'e hizali yerlestir
+        (menu de oradan aciliyor -> tutarli)."""
+        try:
+            from PyQt5.QtWidgets import QApplication as _QApp
+            scr = _QApp.primaryScreen().availableGeometry()
+            geo = tray.geometry()
+            if geo.width() > 0:
+                # pencerenin SAG kenari tray ikonunun SOL kenarina hizali
+                # (biraz sola -> menu sagda acilinca cakismaz, yan yana durur)
+                x = geo.left() - w.width() + geo.width()
+                # not: tray genisligi kadar sola cek
+                x = geo.right() - w.width() - 40
+                y = geo.bottom() + 6
+            else:
+                # tray konumu yoksa: sag ust kose
+                x = scr.right() - w.width() - 12
+                y = scr.top() + 30
+            # ekran disina tasmasin
+            x = max(scr.left() + 6, min(x, scr.right() - w.width() - 6))
+            y = max(scr.top() + 6, y)
+            w.move(int(x), int(y))
+        except Exception:
+            pass
+
     def open_control():
         try:
             import control_window
@@ -1323,6 +1348,7 @@ def build_tray():
             w = ctrl_win[0]
             if hasattr(w, "_refresh"): w._refresh()
             w.show(); w.raise_(); w.activateWindow()
+            _position_near_tray(w)   # tray'in altina tasi
         except Exception as e:
             print(f"Kontrol penceresi hatasi: {e}")
     def on_tray_activated(reason):
@@ -1332,12 +1358,8 @@ def build_tray():
             open_control()
     tray.activated.connect(on_tray_activated)
 
-    # Menuye de "Kontrol Paneli" ekle (en uste)
-    ctrl_action = menu.actions()[0] if menu.actions() else None
-    open_act = QAction("Kontrol Paneli Ac", menu)
-    open_act.triggered.connect(open_control)
-    menu.insertAction(ctrl_action, open_act)
-    menu.insertSeparator(ctrl_action)
+    # Not: "Kontrol Paneli Ac" menu ogesi kaldirildi -
+    # sol tik zaten kontrol panelini aciyor (tekrar gereksiz).
 
     tray.setContextMenu(menu); tray.show()
     return app

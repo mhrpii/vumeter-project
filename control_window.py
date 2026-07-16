@@ -36,13 +36,30 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     QFrame#sep {{ background: {BORDER}; max-height: 1px; }}
     """
 
+    # Tema/etiket adlarini ekranda Turkce goster (kod anahtari degismez)
+    _TR_LABELS = {
+        "Camgobegi": "Camgöbeği",
+        "Yesil-Sari-Kirmizi": "Yeşil-Sarı-Kırmızı",
+        "Sari": "Sarı", "Kirmizi": "Kırmızı", "Yesil": "Yeşil",
+        "Turuncu": "Turuncu", "Mavi": "Mavi", "Mor": "Mor",
+        "Kizil": "Kızıl", "Camgobek": "Camgöbeği",
+        "Olcum Paneli": "Ölçüm Paneli",
+        "Sistem Monitoru": "Sistem Monitörü",
+        "Disk Sicakliklari": "Disk Sıcaklıkları",
+        "Cekirdek Isi Haritasi": "Çekirdek Isı Haritası",
+        "Sensorler": "Sensörler",
+    }
+    def _tr(s):
+        return _TR_LABELS.get(s, s)
+
     MODES = ["Spektrum", "LED Spektrum", "VU Metre", "Sistem Monitoru", "Olcum Paneli"]
 
     w = QWidget(); w.setObjectName("root")
     w.setWindowTitle("Vumeter LCD - Kontrol")
     w.setStyleSheet(QSS)
-    w.setMinimumWidth(440)
-    root = QVBoxLayout(w); root.setContentsMargins(18, 18, 18, 18); root.setSpacing(12)
+    w.setMinimumWidth(300)
+    w.setMaximumWidth(340)
+    root = QVBoxLayout(w); root.setContentsMargins(14, 14, 14, 14); root.setSpacing(10)
 
     # Baslik
     hdr = QLabel("VİNTAGE SES KONSOLU"); hdr.setObjectName("header")
@@ -54,26 +71,32 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     mode_group = QButtonGroup(w); mode_group.setExclusive(True)
     mode_btns = {}
     for i, m in enumerate(MODES):
-        b = QPushButton(m); b.setCheckable(True)
+        b = QPushButton(_tr(m)); b.setCheckable(True)
         b.setChecked(state["mode"] == m)
         mode_group.addButton(b); mode_btns[m] = b
-        mode_grid.addWidget(b, i // 3, i % 3)
+        mode_grid.addWidget(b, i // 2, i % 2)
     root.addLayout(mode_grid)
 
     sep = QFrame(); sep.setObjectName("sep"); sep.setFrameShape(QFrame.HLine); root.addWidget(sep)
 
     # --- Moda ozel alt panel (dinamik) ---
     sub_label = QLabel("SECENEKLER"); sub_label.setObjectName("section"); root.addWidget(sub_label)
-    sub_container = QWidget(); sub_layout = QHBoxLayout(sub_container)
+    sub_container = QWidget(); sub_layout = QGridLayout(sub_container)
     sub_layout.setContentsMargins(0, 0, 0, 0); sub_layout.setSpacing(8)
+    _grid_pos = [0]  # eklenen buton sayaci (2 sutun grid icin)
+    def _grid_add(btn):
+        sub_layout.addWidget(btn, _grid_pos[0] // 2, _grid_pos[0] % 2)
+        _grid_pos[0] += 1
     root.addWidget(sub_container)
 
     _sub_btns = []
 
     def clear_sub():
+        _grid_pos[0] = 0
         for b in _sub_btns:
             b.setParent(None)
         _sub_btns.clear()
+
 
     def build_sub():
         clear_sub()
@@ -81,24 +104,24 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
         if m == "Spektrum":
             grp = QButtonGroup(w); grp.setExclusive(True)
             for i, tn in enumerate(color_themes):
-                b = QPushButton(tn); b.setCheckable(True)
+                b = QPushButton(_tr(tn)); b.setCheckable(True)
                 b.setChecked(state["theme_idx"] == i)
                 def mk(idx):
                     def _f(): state["theme_idx"] = idx
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
-                sub_layout.addWidget(b); _sub_btns.append(b)
+                _grid_add(b); _sub_btns.append(b)
         elif m == "LED Spektrum":
             grp = QButtonGroup(w); grp.setExclusive(True)
             for i, tn in enumerate(led_themes):
-                b = QPushButton(tn); b.setCheckable(True)
+                b = QPushButton(_tr(tn)); b.setCheckable(True)
                 b.setChecked(state["led_theme_idx"] == i)
                 def mk(idx):
                     def _f():
                         state["led_theme_idx"] = idx; led_cache_clear()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
-                sub_layout.addWidget(b); _sub_btns.append(b)
+                _grid_add(b); _sub_btns.append(b)
         elif m == "VU Metre":
             grp = QButtonGroup(w); grp.setExclusive(True)
             for i in range(vu_dial_count):
@@ -109,7 +132,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                         state["vu_dial_idx"] = idx; vu_cache_clear()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
-                sub_layout.addWidget(b); _sub_btns.append(b)
+                _grid_add(b); _sub_btns.append(b)
         elif m == "Olcum Paneli":
             grp = QButtonGroup(w); grp.setExclusive(True)
             for i, pn in enumerate(("Seviyeler", "Analiz")):
@@ -119,20 +142,20 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                     def _f(): state["meter_page"] = idx
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
-                sub_layout.addWidget(b); _sub_btns.append(b)
+                _grid_add(b); _sub_btns.append(b)
         elif m == "Sistem Monitoru":
             grp = QButtonGroup(w); grp.setExclusive(True)
-            for i, pn in enumerate(("Sensorler", "Disk Sicakliklari", "Cekirdek Isi Haritasi")):
+            for i, pn in enumerate(("Sensörler", "Disk Sıcaklığı", "Çekirdek Isısı")):
                 b = QPushButton(pn); b.setCheckable(True)
                 b.setChecked(state.get("sysmon_page", 0) == i)
                 def mk(idx):
                     def _f(): state["sysmon_page"] = idx
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
-                sub_layout.addWidget(b); _sub_btns.append(b)
+                _grid_add(b); _sub_btns.append(b)
         else:
             lbl = QLabel("Bu modun ek secenegi yok."); lbl.setStyleSheet(f"color:{DIM};")
-            sub_layout.addWidget(lbl); _sub_btns.append(lbl)
+            sub_layout.addWidget(lbl, 0, 0, 1, 2); _sub_btns.append(lbl)
 
     def on_mode_click(m):
         def _f():
