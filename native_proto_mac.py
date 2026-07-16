@@ -108,6 +108,16 @@ COLOR_THEMES = {
     "Camgobegi": [(0, 40, 80), (0, 200, 210), (200, 255, 255)],
 }
 COLOR_THEME_NAMES = list(COLOR_THEMES.keys())
+
+# Tema/etiket adlarini ekranda Turkce goster (kod anahtari degismez)
+_TR_LABELS = {
+    "Camgobegi": "Camgöbeği",
+    "Yesil-Sari-Kirmizi": "Yeşil-Sarı-Kırmızı",
+    "Sari": "Sarı", "Kirmizi": "Kırmızı", "Yesil": "Yeşil",
+    "Kizil": "Kızıl",
+}
+def _tr_label(s):
+    return _TR_LABELS.get(s, s)
 _HALF_N = NUM_BARS // 2
 
 _state = {"theme_idx": 0, "running": True, "ch_layout": 1,
@@ -1242,7 +1252,7 @@ def build_tray():
         def _f(): _state["mode"] = "Spektrum"; _state["theme_idx"] = idx
         return _f
     for i, tn in enumerate(COLOR_THEME_NAMES):
-        a = QAction(theme_icon(COLOR_THEMES[tn]), tn, menu)
+        a = QAction(theme_icon(COLOR_THEMES[tn]), _tr_label(tn), menu)
         a.triggered.connect(mk_spek(i)); spek.addAction(a)
 
     # LED Spektrum -> LED temalari
@@ -1253,7 +1263,7 @@ def build_tray():
             _led_texture_cache["surf"] = None
         return _f
     for i, tn in enumerate(LED_THEME_NAMES):
-        a = QAction(theme_icon(LED_THEMES[tn]), tn, menu)
+        a = QAction(theme_icon(LED_THEMES[tn]), _tr_label(tn), menu)
         a.triggered.connect(mk_led(i)); leds.addAction(a)
 
     # VU Metre -> kadranlar
