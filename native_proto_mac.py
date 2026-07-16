@@ -953,6 +953,7 @@ class CavaReader:
         self.proc = None
         self._active_source = None
         self._zero_since = None
+        self._warmup = 8   # ilk 8 kareyi atla (baslangic spike korumasi)
         self._last_data = time.time()
         self._pw_reset_done = False
         self._t = threading.Thread(target=self._loop, daemon=True)
@@ -967,6 +968,7 @@ class CavaReader:
         self._zero_since = None
 
     def _restart_cava(self):
+        self._warmup = 8   # yeniden baslatinca da ilk kareleri atla
         try:
             if self.proc:
                 self.proc.terminate()
@@ -1002,7 +1004,22 @@ class CavaReader:
                     continue
                 parts = line.strip().rstrip(";").split(";")
                 if len(parts) >= NUM_BARS:
-                    vals = [int(p) for p in parts[:NUM_BARS]]
+                    # ham degerleri guvenli parse + 0-255 clamp (cava bazen asiri/cop uretir:
+                    # baslangicta ya da mute aninda tavana vuran spike'lari engeller)
+                    vals = []
+                    bad = False
+                    for p in parts[:NUM_BARS]:
+                        try:
+                            v = int(p)
+                        except ValueError:
+                            v = 0; bad = True
+                        if v < 0: v = 0
+                        elif v > 255: v = 255
+                        vals.append(v)
+                    # ilk birkac kareyi atla (cava kalibre olana kadar spike gelebilir)
+                    if self._warmup > 0:
+                        self._warmup -= 1
+                        vals = [0] * NUM_BARS
                     with self._lock:
                         self.bars = vals
                     if max(vals) <= 1:
