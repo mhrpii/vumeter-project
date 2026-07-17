@@ -22,6 +22,7 @@ import pygame
 # ==================== SABITLER ====================
 WIDTH, HEIGHT = 1920, 462          # NATIVE YATAY (panel kendi donduruyor)
 NUM_BARS = 204
+_dbg_frame = [0]
 # NOT: trcc / HTTP API / tema klasoru ARTIK KULLANILMIYOR.
 # Panele dogrudan USB ile yaziliyor (trcc_direct.py).
 DEVICE_KEY = "0416:5408"   # (sadece bilgi amacli)
@@ -120,9 +121,38 @@ def _tr_label(s):
     return _TR_LABELS.get(s, s)
 _HALF_N = NUM_BARS // 2
 
-_state = {"theme_idx": 0, "running": True, "ch_layout": 1,
+_state = {"theme_idx": 0, "running": True, "ch_layout": 1, "sens_mult": 1.0,
           "mode": "Spektrum", "led_theme_idx": 0, "vu_dial_idx": 0, "meter_page": 0,
           "brightness": 100, "brightness_changed": False, "last_sound": 0.0}
+
+# ==================== AYAR KAYDETME (kalici) ====================
+SETTINGS_PATH = os.path.expanduser("~/.config/vumeter/settings.json")
+_SETTINGS_KEYS = ["theme_idx", "ch_layout", "sens_mult", "mode",
+                  "led_theme_idx", "vu_dial_idx", "meter_page",
+                  "sysmon_page", "brightness"]
+
+def load_settings():
+    """Acilista kayitli ayarlari state'e uygula (yoksa varsayilan)."""
+    try:
+        import json
+        with open(SETTINGS_PATH) as f:
+            data = json.load(f)
+        for k in _SETTINGS_KEYS:
+            if k in data:
+                _state[k] = data[k]
+    except Exception:
+        pass
+
+def save_settings():
+    """Mevcut ayarlari diske yaz (degistikce cagrilir)."""
+    try:
+        import json
+        os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+        data = {k: _state.get(k) for k in _SETTINGS_KEYS if k in _state}
+        with open(SETTINGS_PATH, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
 
 LED_THEMES = {
     "Camgobegi": [(10, 90, 70), (40, 200, 190), (120, 255, 235)],
@@ -913,7 +943,7 @@ def write_cava_config(bars=NUM_BARS, fps=60):
         f.write(f"""[general]
 bars = {bars}
 framerate = {fps}
-autosens = 1
+autosens = 0
 sensitivity = 100
 
 [input]
@@ -953,7 +983,6 @@ class CavaReader:
         self.proc = None
         self._active_source = None
         self._zero_since = None
-        self._warmup = 8   # ilk 8 kareyi atla (baslangic spike korumasi)
         self._last_data = time.time()
         self._pw_reset_done = False
         self._t = threading.Thread(target=self._loop, daemon=True)
@@ -968,7 +997,6 @@ class CavaReader:
         self._zero_since = None
 
     def _restart_cava(self):
-        self._warmup = 8   # yeniden baslatinca da ilk kareleri atla
         try:
             if self.proc:
                 self.proc.terminate()
@@ -1004,22 +1032,7 @@ class CavaReader:
                     continue
                 parts = line.strip().rstrip(";").split(";")
                 if len(parts) >= NUM_BARS:
-                    # ham degerleri guvenli parse + 0-255 clamp (cava bazen asiri/cop uretir:
-                    # baslangicta ya da mute aninda tavana vuran spike'lari engeller)
-                    vals = []
-                    bad = False
-                    for p in parts[:NUM_BARS]:
-                        try:
-                            v = int(p)
-                        except ValueError:
-                            v = 0; bad = True
-                        if v < 0: v = 0
-                        elif v > 255: v = 255
-                        vals.append(v)
-                    # ilk birkac kareyi atla (cava kalibre olana kadar spike gelebilir)
-                    if self._warmup > 0:
-                        self._warmup -= 1
-                        vals = [0] * NUM_BARS
+                    vals = [int(p) for p in parts[:NUM_BARS]]
                     with self._lock:
                         self.bars = vals
                     if max(vals) <= 1:
@@ -1057,7 +1070,18 @@ class CavaReader:
 
     def snapshot(self):
         with self._lock:
-            return list(self.bars)
+            raw = list(self.bars)
+        # canli hassasiyet carpani (menudeki slider) + 0-255 clamp
+        m = _state.get("sens_mult", 1.0)
+        if m != 1.0:
+            out = []
+            for v in raw:
+                v = int(v * m)
+                if v > 255: v = 255
+                elif v < 0: v = 0
+                out.append(v)
+            return out
+        return raw
 
 
 # ==================== NATIVE YATAY SPEKTRUM ====================
@@ -1404,12 +1428,14 @@ def build_tray():
 
 # ==================== ANA DONGU ====================
 def main():
+    # Kayitli ayarlari yukle (hassasiyet, kanal, tema, parlaklik, mod...)
+    load_settings()
     # argv: mod adi ve/veya --autostart / --no-tray bayraklari
     args = sys.argv[1:]
     autostart = "--autostart" in args
     args = [a for a in args if not a.startswith("--")]
     if args:
-        _state["mode"] = args[0]
+        _state["mode"] = args[0]   # komut satiri modu kayitli modu ezer
     # pygame.init() TUM modulleri (ses mixer dahil) baslatir -> mixer bir ses
     # aygiti acar -> PipeWire/KDE "ses aygiti degisti" OSD'sini tetikler (LG'de
     # profil listesi belirir). Biz ses CALMIYORUZ (cava'dan okuyoruz), mixer'a
@@ -1467,6 +1493,11 @@ def main():
         while _state["running"]:
             frame_start = time.time()
             snap = cava.snapshot()
+            _dbg_frame[0] += 1
+            if snap and _dbg_frame[0] % 30 == 0:
+                import sys as _sd
+                _sd.stderr.write("[DBG] max=" + str(max(snap)) + " ort=" + str(sum(snap)//len(snap)) + chr(10))
+                _sd.stderr.flush()
             mode = _state["mode"]
             # IDLE: uzun sure ses yoksa bekleme ekrani (siyah kalmasin)
             if snap and max(snap) > 2:

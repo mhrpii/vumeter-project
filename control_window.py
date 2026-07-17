@@ -52,6 +52,22 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     def _tr(s):
         return _TR_LABELS.get(s, s)
 
+    def _save_settings():
+        # state'i dogrudan diske yaz (import edilen modul ayri instance olabilir,
+        # o yuzden aldigimiz gercek state sozlugunu kaydediyoruz)
+        try:
+            import json, os
+            path = os.path.expanduser("~/.config/vumeter/settings.json")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            keys = ["theme_idx", "ch_layout", "sens_mult", "mode",
+                    "led_theme_idx", "vu_dial_idx", "meter_page",
+                    "sysmon_page", "brightness"]
+            data = {k: state.get(k) for k in keys if k in state}
+            with open(path, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
     MODES = ["Spektrum", "LED Spektrum", "VU Metre", "Sistem Monitoru", "Olcum Paneli"]
 
     w = QWidget(); w.setObjectName("root")
@@ -107,7 +123,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                 b = QPushButton(_tr(tn)); b.setCheckable(True)
                 b.setChecked(state["theme_idx"] == i)
                 def mk(idx):
-                    def _f(): state["theme_idx"] = idx
+                    def _f(): state["theme_idx"] = idx; _save_settings()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 _grid_add(b); _sub_btns.append(b)
@@ -118,7 +134,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                 b.setChecked(state["led_theme_idx"] == i)
                 def mk(idx):
                     def _f():
-                        state["led_theme_idx"] = idx; led_cache_clear()
+                        state["led_theme_idx"] = idx; led_cache_clear(); _save_settings()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 _grid_add(b); _sub_btns.append(b)
@@ -129,7 +145,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                 b.setChecked(state["vu_dial_idx"] == i)
                 def mk(idx):
                     def _f():
-                        state["vu_dial_idx"] = idx; vu_cache_clear()
+                        state["vu_dial_idx"] = idx; vu_cache_clear(); _save_settings()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 _grid_add(b); _sub_btns.append(b)
@@ -139,7 +155,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                 b = QPushButton(pn); b.setCheckable(True)
                 b.setChecked(state["meter_page"] == i)
                 def mk(idx):
-                    def _f(): state["meter_page"] = idx
+                    def _f(): state["meter_page"] = idx; _save_settings()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 _grid_add(b); _sub_btns.append(b)
@@ -149,7 +165,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
                 b = QPushButton(pn); b.setCheckable(True)
                 b.setChecked(state.get("sysmon_page", 0) == i)
                 def mk(idx):
-                    def _f(): state["sysmon_page"] = idx
+                    def _f(): state["sysmon_page"] = idx; _save_settings()
                     return _f
                 b.clicked.connect(mk(i)); grp.addButton(b)
                 _grid_add(b); _sub_btns.append(b)
@@ -159,7 +175,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
 
     def on_mode_click(m):
         def _f():
-            state["mode"] = m
+            state["mode"] = m; _save_settings()
             build_sub()
         return _f
     for m, b in mode_btns.items():
@@ -182,8 +198,47 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
         state["brightness"] = v
         br_val.setText(f"%{v}")
         on_brightness(v)
+        _save_settings()
     slider.valueChanged.connect(on_slider)
     root.addWidget(slider)
+
+    sep_h = QFrame(); sep_h.setObjectName("sep"); sep_h.setFrameShape(QFrame.HLine); root.addWidget(sep_h)
+
+    # --- Hassasiyet (canli carpan, cava restart yok) ---
+    hs_row = QHBoxLayout()
+    hs_lbl = QLabel("HASSASIYET"); hs_lbl.setObjectName("section")
+    _sm0 = state.get("sens_mult", 1.0)
+    hs_val = QLabel(f"{_sm0:.1f}x"); hs_val.setStyleSheet(f"color:{GREEN}; font-weight:bold;")
+    hs_row.addWidget(hs_lbl); hs_row.addStretch(); hs_row.addWidget(hs_val)
+    root.addLayout(hs_row)
+
+    # slider 5..50 -> carpan 0.5x..5.0x (10'a bolerek)
+    hs_slider = QSlider(Qt.Horizontal); hs_slider.setMinimum(5); hs_slider.setMaximum(50)
+    hs_slider.setValue(int(_sm0 * 10)); hs_slider.setSingleStep(1)
+    def on_hs(v):
+        mult = v / 10.0
+        state["sens_mult"] = mult
+        hs_val.setText(f"{mult:.1f}x")
+        _save_settings()
+    hs_slider.valueChanged.connect(on_hs)
+    root.addWidget(hs_slider)
+
+    sep_c = QFrame(); sep_c.setObjectName("sep"); sep_c.setFrameShape(QFrame.HLine); root.addWidget(sep_c)
+
+    # --- Kanal duzeni (tiz/bas sag/sol) ---
+    ch_lbl = QLabel("KANAL DUZENI"); ch_lbl.setObjectName("section"); root.addWidget(ch_lbl)
+    ch_grid = QGridLayout(); ch_grid.setSpacing(8)
+    _ch_names = ["L + R", "L + R ters", "L ters + R", "Ikisi ters"]
+    ch_group = QButtonGroup(w); ch_group.setExclusive(True)
+    for i, cn in enumerate(_ch_names):
+        b = QPushButton(cn); b.setCheckable(True)
+        b.setChecked(state.get("ch_layout", 1) == i)
+        def mk(idx):
+            def _f(): state["ch_layout"] = idx; _save_settings()
+            return _f
+        b.clicked.connect(mk(i)); ch_group.addButton(b)
+        ch_grid.addWidget(b, i // 2, i % 2)
+    root.addLayout(ch_grid)
 
     sep3 = QFrame(); sep3.setObjectName("sep"); sep3.setFrameShape(QFrame.HLine); root.addWidget(sep3)
 
