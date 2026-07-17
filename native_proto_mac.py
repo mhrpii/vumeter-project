@@ -997,7 +997,7 @@ class CavaReader:
         self.proc = subprocess.Popen([_find_cava_bin(), "-p", CAVA_CONFIG], stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
         self._zero_since = None
-        self._warmup = 22   # ilk 12 kare 0 (kalibrasyon gizli) + 10 kare kademeli (hizli otur)
+        self._warmup = 30   # ilk 18 kare 0 (kalibrasyon/tavan patlamasi gizli) + 12 kademeli
 
     def set_autosens(self, val):
         """Idle'da 0 (gurultu sismesin), muzikte 1 (otomatik seviye).
@@ -1093,10 +1093,10 @@ class CavaReader:
         # sonraki 15 kare kademeli 0->1 (yumusak devreye gir).
         if self._warmup > 0:
             self._warmup -= 1
-            if self._warmup > 10:
-                raw = [0] * len(raw)              # kalibrasyon fazi: tam sessiz (12 kare)
+            if self._warmup > 12:
+                raw = [0] * len(raw)              # kalibrasyon/tavan patlamasi gizli (18 kare)
             else:
-                wf = (10 - self._warmup) / 10.0   # kademeli 0.0 -> 1.0 (10 kare)
+                wf = (12 - self._warmup) / 12.0   # kademeli 0.0 -> 1.0 (12 kare)
                 raw = [int(v * wf) for v in raw]
         # canli hassasiyet carpani (menudeki slider) + 0-255 clamp
         m = _state.get("sens_mult", 1.0)
@@ -1158,7 +1158,7 @@ def draw_spectrum(surf, cava_bars, theme_name, fps):
     for i in range(NUM_BARS):
         v = bars[i] if i < len(bars) else 0
         target = (v / 255.0) * _MAX_H * 0.92
-        _spec_smooth[i] += (target - _spec_smooth[i]) * 0.85
+        _spec_smooth[i] += (target - _spec_smooth[i]) * 0.6
         H = min(int(_spec_smooth[i]), _MAX_H)
         if H >= _spec_peak[i]:
             _spec_peak[i] = H
