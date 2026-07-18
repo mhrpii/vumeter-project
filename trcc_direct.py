@@ -99,6 +99,19 @@ class TrccDirect:
             raise RuntimeError(f"Panel bulunamadi ({VID:04X}:{PID:04X}). "
                                "Takili mi? Yonetici misin?")
 
+        # USB RESET: uyku/reboot/kilit sonrasi cihaz asili kalabilir (Errno 110).
+        # dev.reset() "USB takip cikarma"nin yazilimsal hali - kilidi temizler.
+        try:
+            self.dev.reset()
+            time.sleep(1.0)   # reset sonrasi cihaz yeniden sayilsin
+            # reset sonrasi handle gecersiz olur -> cihazi tekrar bul
+            self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=backend)
+            if self.dev is None:
+                time.sleep(1.5)   # biraz daha bekle, USB yeniden gelsin
+                self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=backend)
+        except Exception:
+            pass   # reset desteklenmezse/basarisizsa normal akisa devam
+
         # kernel surucusunu ayir (Linux; Windows'ta NotImplementedError -> gecilir)
         for i in range(4):
             try:
