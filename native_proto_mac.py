@@ -1529,7 +1529,10 @@ def main():
                 _sd.stderr.flush()
             mode = _state["mode"]
             # IDLE: uzun sure ses yoksa bekleme ekrani (siyah kalmasin)
-            if snap and max(snap) > 2:
+            # last_sound SADECE gercek muzikte guncellensin (ortalama > 25).
+            # max bazli olursa self-noise (max yuksek, ort dusuk) last_sound'u
+            # gunceller -> silence hic 30'a ulasmaz -> autosens hep acik -> kisir dongu.
+            if snap and (sum(snap) / len(snap)) > 25:
                 _state["last_sound"] = time.time()
             idle = (time.time() - _state.get("last_sound", 0)) > 8.0
             # AUTOSENS dinamik: kisa sessizliklerde (sarki arasi) ACIK kalir ki
