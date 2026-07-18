@@ -983,7 +983,9 @@ class CavaReader:
         self.proc = None
         self._active_source = None
         self._zero_since = None
-        self._cur_autosens = 1   # baslangicta autosens acik (muzik bekleniyor)
+        self._cur_autosens = 0   # HEP 0: auto-gain yazilimsal (restart/donma yok)
+        self._ag_peak = 0.0      # yazilimsal auto-gain: sonumlenen tepe izleyici
+        self._ag_mult = 1.0      # yazilimsal auto-gain: yumusak carpan
         self._warmup = 0   # restart sonrasi yumusak baslangic sayaci
         self._last_data = time.time()
         self._pw_reset_done = False
@@ -1098,8 +1100,21 @@ class CavaReader:
             else:
                 wf = (12 - self._warmup) / 12.0   # kademeli 0.0 -> 1.0 (12 kare)
                 raw = [int(v * wf) for v in raw]
-        # canli hassasiyet carpani (menudeki slider) + 0-255 clamp
-        m = _state.get("sens_mult", 1.0)
+        # YAZILIMSAL AUTO-GAIN (cava autosens yerine; restart yok = donma yok):
+        # sonumlenen tepe izlenir; tepe dusukse carpan buyur (kisik muzik dolar),
+        # yuksekse 1'e yaklasir (tasmaz). Self-noise cava'dan 0 cikar -> 0x carpan=0.
+        cur_peak = max(raw) if raw else 0
+        if cur_peak > self._ag_peak:
+            self._ag_peak = float(cur_peak)     # ani yukselisi hemen izle
+        else:
+            self._ag_peak *= 0.995              # yavas sonumlen (~birkac sn)
+        if self._ag_peak > 12:                  # gercek sinyal varsa
+            target = max(1.0, min(8.0, 230.0 / max(1.0, self._ag_peak)))
+        else:
+            target = 1.0                        # sinyal yok: notr
+        self._ag_mult += (target - self._ag_mult) * 0.05   # yumusak (pompalamaz)
+        # canli hassasiyet carpani (menudeki slider) x auto-gain + 0-255 clamp
+        m = _state.get("sens_mult", 1.0) * self._ag_mult
         if m != 1.0:
             out = []
             for v in raw:
@@ -1538,11 +1553,8 @@ def main():
             # AUTOSENS dinamik: kisa sessizliklerde (sarki arasi) ACIK kalir ki
             # muzik gelince ANINDA bar gelsin (restart yok). Sadece UZUN sessizlikte
             # (30s+, gurultu 38s'de sismeden once) kapanir -> Scarlett self-noise sismez.
-            silence = time.time() - _state.get("last_sound", 0)
-            try:
-                cava.set_autosens(0 if silence > 30.0 else 1)
-            except Exception:
-                pass
+            # autosens gecisi KALDIRILDI: cava hep autosens=0, otomatik seviye
+            # yazilimsal auto-gain'de (CavaReader.snapshot) -> restart/donma YOK.
             # Sistem Monitoru sesten BAGIMSIZ - idle'a dusmez, her zaman gosterilir
             if mode == "Sistem Monitoru":
                 draw_sysmon(surf, FPS)
