@@ -131,6 +131,20 @@ _SETTINGS_KEYS = ["theme_idx", "ch_layout", "sens_mult", "mode",
                   "led_theme_idx", "vu_dial_idx", "meter_page",
                   "sysmon_page", "brightness"]
 
+def _hid_idle_seconds():
+    """Kullanici kac saniyedir hareketsiz (fare/klavye). macOS HIDIdleTime."""
+    try:
+        out = subprocess.run(["ioreg", "-c", "IOHIDSystem", "-d", "4"],
+                             capture_output=True, text=True, timeout=3).stdout
+        for line in out.splitlines():
+            if "HIDIdleTime" in line:
+                ns = int(line.split("=")[-1].strip())
+                return ns / 1e9
+    except Exception:
+        pass
+    return 0.0
+
+
 def load_settings():
     """Acilista kayitli ayarlari state'e uygula (yoksa varsayilan)."""
     try:
@@ -986,6 +1000,7 @@ class CavaReader:
         self._cur_autosens = 0   # HEP 0: auto-gain yazilimsal (restart/donma yok)
         self._ag_peak = 0.0      # yazilimsal auto-gain: sonumlenen tepe izleyici
         self._ag_mult = 1.0      # yazilimsal auto-gain: yumusak carpan
+        self._sleep_paused = False  # uyku-dostu durdurma bayragi
         self._warmup = 0   # restart sonrasi yumusak baslangic sayaci
         self._last_data = time.time()
         self._pw_reset_done = False
@@ -1000,6 +1015,29 @@ class CavaReader:
                                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
         self._zero_since = None
         self._warmup = 30   # ilk 18 kare 0 (kalibrasyon/tavan patlamasi gizli) + 12 kademeli
+
+    def pause_for_sleep(self):
+        """Kullanici uzun suredir hareketsiz + muzik yok: cava'yi tamamen durdur.
+        Scarlett serbest kalir -> coreaudiod uyku engelini birakir -> Mac uyur."""
+        if self._sleep_paused:
+            return
+        self._sleep_paused = True
+        try:
+            if self.proc:
+                self.proc.terminate()
+        except Exception:
+            pass
+        self.proc = None
+        with self._lock:
+            self.bars = [0] * NUM_BARS
+
+    def resume_from_sleep(self):
+        """Kullanici geri geldi (fare/klavye): cava'yi hemen baslat."""
+        if not self._sleep_paused:
+            return
+        self._sleep_paused = False
+        # _loop dongusu proc None gorunce yeniden baslatir; warmup'i kisa tut
+        self._warmup = 6
 
     def set_autosens(self, val):
         """Idle'da 0 (gurultu sismesin), muzikte 1 (otomatik seviye).
@@ -1036,6 +1074,9 @@ class CavaReader:
 
     def _loop(self):
         while _state["running"]:
+            if self._sleep_paused:
+                time.sleep(0.5)
+                continue
             if self.proc is None or self.proc.poll() is not None:
                 with self._lock:
                     self.bars = [0] * NUM_BARS
@@ -1555,6 +1596,23 @@ def main():
             # (30s+, gurultu 38s'de sismeden once) kapanir -> Scarlett self-noise sismez.
             # autosens gecisi KALDIRILDI: cava hep autosens=0, otomatik seviye
             # yazilimsal auto-gain'de (CavaReader.snapshot) -> restart/donma YOK.
+
+            # UYKU-DOSTU CAVA YONETIMI (Mac uyuyabilsin):
+            # Kullanici 120s+ hareketsiz VE muzik yoksa -> cava durur (Scarlett
+            # serbest, coreaudiod uyku engelini birakir -> Mac uyur).
+            # Kullanici donunce (fare/klavye) -> cava ANINDA baslar; muzik acmak
+            # icin zaten once harekete gecersin -> sifir gecikme.
+            # (kontrolu her ~2 saniyede bir yap - ioreg cagrisinin maliyeti dusuk kalsin)
+            if frames % 60 == 0:
+                try:
+                    _hid = _hid_idle_seconds()
+                    _sil = time.time() - _state.get("last_sound", 0)
+                    if _hid > 120.0 and _sil > 30.0:
+                        cava.pause_for_sleep()
+                    elif _hid < 5.0:
+                        cava.resume_from_sleep()
+                except Exception:
+                    pass
             # Sistem Monitoru sesten BAGIMSIZ - idle'a dusmez, her zaman gosterilir
             if mode == "Sistem Monitoru":
                 draw_sysmon(surf, FPS)
