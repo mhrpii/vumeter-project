@@ -1457,9 +1457,9 @@ def build_tray():
 def main():
     # Kayitli ayarlari yukle (hassasiyet, kanal, tema, parlaklik, mod...)
     load_settings()
-    # Acilista "yeni ses vardi" say -> idle/autosens=0 hemen tetiklenmesin,
-    # cava veri uretene kadar autosens=1 kalsin (ilk acilista restart olmasin).
-    _state["last_sound"] = time.time()
+    # Acilista "yeni ses vardi" say + TAMPON -> cava/warmup otururken (ilk ~14s)
+    # ne idle (VINTAGE) ne autosens=0 tetiklensin. 8s idle esigi + 6s tampon.
+    _state["last_sound"] = time.time() + 6.0
     # argv: mod adi ve/veya --autostart / --no-tray bayraklari
     args = sys.argv[1:]
     autostart = "--autostart" in args
