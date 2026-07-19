@@ -845,43 +845,47 @@ def _bar_to_hz(bar_index, total_bars):
 _sysaudio_cache = {"rate": "--", "fmt": "--", "ch": "--", "vol": "--", "dev": "--", "t": 0.0}
 
 def _refresh_sysaudio():
-    import subprocess as _sp, time as _t, re as _re
+    """Mac: osascript ile ses seviyesi/mute + aygit adi (LCD algilamasindan).
+    (Linux'taki pactl karsiligi - format/hiz CoreAudio varsayilanlari.)"""
+    import subprocess as _sp, time as _t
     now = _t.time()
     if now - _sysaudio_cache["t"] < 1.5:
         return _sysaudio_cache
     _sysaudio_cache["t"] = now
     try:
-        sink = _sp.run(["pactl", "get-default-sink"],
-                       capture_output=True, text=True, timeout=1).stdout.strip()
-        info = _sp.run(["pactl", "list", "sinks"],
-                       capture_output=True, text=True, timeout=1).stdout
-        spec = ""
-        for block in info.split("Sink #"):
-            if sink and sink in block:
-                for line in block.splitlines():
-                    if "Sample Specification" in line:
-                        spec = line.split(":", 1)[1].strip()
-                        break
-                break
-        if spec:
-            parts = spec.split()
-            if len(parts) >= 3:
-                _sysaudio_cache["fmt"] = parts[0]
-                _sysaudio_cache["ch"] = parts[1]
-                hz = parts[2].replace("Hz", "")
-                try:
-                    _sysaudio_cache["rate"] = f"{int(hz)//1000}kHz"
-                except Exception:
-                    _sysaudio_cache["rate"] = parts[2]
-        vol = _sp.run(["pactl", "get-sink-volume", "@DEFAULT_SINK@"],
-                      capture_output=True, text=True, timeout=1).stdout
-        m = _re.search(r"(\d+)%", vol)
-        if m:
-            _sysaudio_cache["vol"] = m.group(1) + "%"
-        if "Focusrite" in sink or "Scarlett" in sink:
+        # Ses seviyesi + mute (osascript - hizli ve guvenilir)
+        out = _sp.run(["osascript", "-e", "get volume settings"],
+                      capture_output=True, text=True, timeout=2).stdout
+        # ornek: "output volume:34, input volume:75, alert volume:100, output muted:false"
+        for part in out.split(","):
+            part = part.strip()
+            if part.startswith("output volume:"):
+                v = part.split(":")[1].strip()
+                if v.isdigit():
+                    _sysaudio_cache["vol"] = v + "%"
+                else:
+                    # missing value: USB aygit (Scarlett) donanim potu kullaniyor,
+                    # macOS yazilimsal yuzdeyi bilemez -> "Donanim" goster
+                    _sysaudio_cache["vol"] = "Donanım"
+            elif part.startswith("output muted:") and "true" in part:
+                _sysaudio_cache["vol"] = "SESSIZ"
+        # Aygit adi: LCD ses algilamasi zaten dogru kaynagi biliyor
+        try:
+            srcname = MAC_AUDIO_SOURCE or ""
+        except Exception:
+            srcname = ""
+        if "Scarlett" in srcname or "Focusrite" in srcname:
             _sysaudio_cache["dev"] = "Scarlett Solo 4th Gen"
-        elif sink:
-            _sysaudio_cache["dev"] = sink.split(".")[-2][:24] if "." in sink else sink[:24]
+        elif "BlackHole" in srcname:
+            _sysaudio_cache["dev"] = "BlackHole"
+        elif srcname:
+            _sysaudio_cache["dev"] = srcname[:24]
+        else:
+            _sysaudio_cache["dev"] = "CoreAudio"
+        # Format/kanal/hiz: cava config degerlerimiz (sabit, dogru)
+        _sysaudio_cache["fmt"] = "s16le"
+        _sysaudio_cache["ch"] = "2ch"
+        _sysaudio_cache["rate"] = "44kHz"
     except Exception:
         pass
     return _sysaudio_cache
