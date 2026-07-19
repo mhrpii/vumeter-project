@@ -69,6 +69,33 @@ state = {
     "sens_mult": 1.0,          # hassasiyet carpani (menuden)
 }
 
+# ==================== AYAR KAYDETME (kalici - masaustu) ====================
+DESKTOP_SETTINGS_PATH = os.path.expanduser("~/.config/vumeter/desktop_settings.json")
+_DESKTOP_KEYS = ["mode", "theme_idx", "led_theme_idx", "vu_dial_idx",
+                 "ch_layout", "sens_mult"]
+
+def load_desktop_settings():
+    try:
+        import json
+        with open(DESKTOP_SETTINGS_PATH) as f:
+            data = json.load(f)
+        for k in _DESKTOP_KEYS:
+            if k in data:
+                state[k] = data[k]
+    except Exception:
+        pass
+
+def save_desktop_settings():
+    try:
+        import json
+        os.makedirs(os.path.dirname(DESKTOP_SETTINGS_PATH), exist_ok=True)
+        with open(DESKTOP_SETTINGS_PATH, "w") as f:
+            json.dump({k: state.get(k) for k in _DESKTOP_KEYS}, f)
+    except Exception:
+        pass
+
+load_desktop_settings()   # acilista kayitli ayarlari yukle
+
 # pygame.init() ses mixer'ini da baslatir -> mixer bir ses aygiti acar ->
 # PipeWire/KDE "ses aygiti degisti" OSD'sini tetikler (LG monitorde profil
 # listesi belirir). Biz ses CALMIYORUZ (cava'dan okuyoruz), mixer'a gerek yok.
@@ -1064,6 +1091,22 @@ def setup_tray():
         app = QApplication.instance() or QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
 
+        # macOS: Dock'ta gorunme (Python roket ikonu gizlenir, sadece tray)
+        if sys.platform == "darwin":
+            try:
+                import ctypes, ctypes.util
+                _objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+                _objc.objc_getClass.restype = ctypes.c_void_p
+                _objc.sel_registerName.restype = ctypes.c_void_p
+                _objc.objc_msgSend.restype = ctypes.c_void_p
+                _objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+                _NSApp = _objc.objc_getClass(b"NSApplication")
+                _shared = _objc.objc_msgSend(_NSApp, _objc.sel_registerName(b"sharedApplication"))
+                _objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long]
+                _objc.objc_msgSend(_shared, _objc.sel_registerName(b"setActivationPolicy:"), 1)
+            except Exception:
+                pass
+
         def make_icon():
             pm = QPixmap(64, 64)
             pm.fill(QColor(20, 22, 26))
@@ -1097,6 +1140,7 @@ def setup_tray():
                     state[k] = v
                 if "vu_dial_idx" in kw:
                     _vu_scaled_cache.clear()
+                save_desktop_settings()
             return _f
 
         # Spektrum / Spektrum 2 -> renk temalari (renk onizleme ikonlu)
@@ -1310,6 +1354,8 @@ while running:
                     _vu_scaled_cache.clear()
                 else:
                     state["theme_idx"] = (state["theme_idx"] + 1) % len(COLOR_THEME_NAMES)
+            if event.type == pygame.KEYDOWN:
+                save_desktop_settings()   # tus kaynakli ayar degisimlerini kaydet
 
     cava_bars = cava.snapshot()
     if len(cava_bars) < NUM_BARS:
