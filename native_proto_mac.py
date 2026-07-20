@@ -1314,25 +1314,38 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                 break
             if cur != last:
                 last = cur
-                raw = bytes(shm.buf[:w * h * 3])
                 try:
-                    surf = pg.image.frombuffer(raw, (w, h), "RGB")
-                    # yazilimsal parlaklik (donanimda yok - trcc de boyle yapiyordu)
+                    # SIZINTISIZ KARE YOLU: kalici numpy dizisi + kalici Surface.
+                    # Her karede YENI nesne YOK (frombuffer/copy/rotate kaldirildi)
+                    # -> SDL tarafinda birikim yapisal olarak imkansiz.
+                    import numpy as _np
+                    if not hasattr(sender_process_main, "_arr"):
+                        sender_process_main._arr = _np.empty((h, w, 3), dtype=_np.uint8)
+                        sender_process_main._surf = pg.Surface((w, h))
+                    _arr = sender_process_main._arr
+                    _src = _np.frombuffer(shm.buf, dtype=_np.uint8,
+                                          count=w * h * 3).reshape(h, w, 3)
+                    # 180 derece donme: numpy ters dilimleme (rotate Surface gereksiz)
+                    _np.copyto(_arr, _src[::-1, ::-1])
+                    # yazilimsal parlaklik: numpy carpani (yeni Surface gerekmez)
                     if brightness is not None:
                         b = brightness.value
                         if b < 100:
-                            surf = surf.copy()
-                            dim = pg.Surface((w, h))
-                            dim.fill((0, 0, 0))
-                            dim.set_alpha(int(255 * (100 - max(10, min(100, b))) / 100))
-                            surf.blit(dim, (0, 0))
-                    dev.send_surface(surf)
+                            b = max(10, min(100, b))
+                            _np.multiply(_arr, b / 100.0, out=_arr, casting="unsafe")
+                    pg.surfarray.blit_array(sender_process_main._surf,
+                                            _arr.swapaxes(0, 1))
+                    dev.send_surface_prerotated(sender_process_main._surf)
                     win_sent += 1
                     now = time.time()
                     if now - win_t0 >= 10.0:
                         print(f"[sender] panele giden: {win_sent/(now-win_t0):.1f} FPS")
                         win_t0 = now
                         win_sent = 0
+                        # BELLEK: kare yolunda biriken Surface/buffer dongulerini supur
+                        # (sender saatler icinde GB'larca sismesin - 10 sn'de bir ucuz)
+                        import gc as _gc
+                        _gc.collect()
                     errs = 0   # basarili gonderim: hata sayacini sifirla
                 except Exception as e:
                     errs += 1

@@ -219,6 +219,16 @@ class TrccDirect:
             pass    # bazi kareler ACK vermeyebilir
         return True
 
+    def send_surface_prerotated(self, surface):
+        """Onceden dondurulmus Surface -> JPEG -> gonder. KALICI buffer
+        (her karede yeni BytesIO yok - sizinti onleme)."""
+        import pygame
+        if not hasattr(self, "_jbuf"):
+            self._jbuf = io.BytesIO()
+        self._jbuf.seek(0); self._jbuf.truncate(0)
+        pygame.image.save(surface, self._jbuf, "frame.jpg")
+        return self.send_jpeg(self._jbuf.getvalue())
+
     def send_surface(self, surface):
         """pygame Surface (1920x462) -> 180 derece dondur -> JPEG -> gonder."""
         import pygame
