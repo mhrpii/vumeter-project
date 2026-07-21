@@ -157,6 +157,16 @@ class TrccDirect:
                 self.ep_in = ep.bEndpointAddress
         if self.ep_out is None or self.ep_in is None:
             raise RuntimeError(f"Endpoint bulunamadi (out={self.ep_out}, in={self.ep_in})")
+        # STALL TEMIZLIGI: Errno 60 kilidinin klasik sebebi endpoint stall.
+        # clear_halt ucuz ve zararsiz -> her baglantida yap (uyku kilidi ilaci).
+        try:
+            self.dev.clear_halt(self.ep_out)
+        except Exception:
+            pass
+        try:
+            self.dev.clear_halt(self.ep_in)
+        except Exception:
+            pass
         print(f"[trcc_direct] Endpoint: OUT=0x{self.ep_out:02x}  IN=0x{self.ep_in:02x}")
 
         # --- HANDSHAKE ---
@@ -177,6 +187,30 @@ class TrccDirect:
         return True
 
     # ---------- kare gonderme ----------
+    def deep_reset(self):
+        """DERIN KILIT ACICI (sahada kanitlandi 2026-07-21): uyku sonrasi
+        Errno 60 kilidinde tek reset yetmiyor -> CIFTE reset + 3'er sn bekleme
+        fiziksel replug ile ayni etkiyi yaratiyor."""
+        import usb.core as _uc
+        try:
+            if self.dev is not None:
+                self.dev.reset()
+        except Exception:
+            pass
+        time.sleep(3.0)
+        try:
+            d2 = _uc.find(idVendor=VID, idProduct=PID)
+            if d2 is not None:
+                d2.reset()
+                usb.util.dispose_resources(d2)
+        except Exception:
+            pass
+        time.sleep(3.0)
+        self.dev = None
+        self._open = False
+        self.ep_out = None
+        self.ep_in = None
+
     def send_jpeg(self, jpeg_bytes):
         """JPEG baytlarini LY chunk protokolüyle panele yaz.
         SIFIR-TAHSIS: kalici buffer + memoryview (her karede yeni bytes YOK)."""

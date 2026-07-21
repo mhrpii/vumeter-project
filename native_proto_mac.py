@@ -1286,6 +1286,14 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                     d.close()
                 except Exception:
                     pass
+                # DERIN KILIT ACICI (sahada kanitlandi): her 3 basarisiz denemede
+                # cifte-reset uygula - uyku kilidini fiziksel replug gibi acar.
+                if deneme % 3 == 0:
+                    try:
+                        _vlog(f"[sender] deep reset deneniyor (deneme {deneme})...")
+                        d.deep_reset()
+                    except Exception:
+                        pass
                 # BELLEK SIZINTISI ONLEME: libusb kaynaklarini acikca birak
                 # (binlerce deneme birikince GB'larca RAM yiyordu)
                 try:
