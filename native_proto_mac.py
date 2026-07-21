@@ -1333,9 +1333,7 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                         if b < 100:
                             b = max(10, min(100, b))
                             _np.multiply(_arr, b / 100.0, out=_arr, casting="unsafe")
-                    pg.surfarray.blit_array(sender_process_main._surf,
-                                            _arr.swapaxes(0, 1))
-                    dev.send_surface_prerotated(sender_process_main._surf)
+                    dev.send_array(_arr)
                     win_sent += 1
                     now = time.time()
                     if now - win_t0 >= 10.0:

@@ -178,15 +178,24 @@ class TrccDirect:
 
     # ---------- kare gonderme ----------
     def send_jpeg(self, jpeg_bytes):
-        """JPEG baytlarini LY chunk protokolüyle panele yaz."""
+        """JPEG baytlarini LY chunk protokolüyle panele yaz.
+        SIFIR-TAHSIS: kalici buffer + memoryview (her karede yeni bytes YOK)."""
         if not self._open:
             raise RuntimeError("Once connect() cagir")
 
         total = len(jpeg_bytes)
         num_chunks = total // CHUNK_DATA + 1
         last_len = total % CHUNK_DATA
+        padded = num_chunks + ((4 - num_chunks % 4) % 4)
+        total_bytes = padded * CHUNK_SIZE
 
-        buf = bytearray(num_chunks * CHUNK_SIZE)
+        # KALICI buffer: gerektiginde buyut (kucultme yok - stabil boyutta kalir)
+        if not hasattr(self, "_sbuf") or len(self._sbuf) < total_bytes:
+            self._sbuf = bytearray(total_bytes + CHUNK_SIZE * 8)
+            self._sview = memoryview(self._sbuf)
+        buf = self._sbuf
+        jview = memoryview(jpeg_bytes)
+
         for i in range(num_chunks):
             off = i * CHUNK_SIZE
             dlen = last_len if i == num_chunks - 1 else CHUNK_DATA
@@ -197,27 +206,41 @@ class TrccDirect:
             buf[off + 8] = 1                      # LY
             struct.pack_into("<H", buf, off + 9, num_chunks)
             struct.pack_into("<H", buf, off + 11, i)
-            src = i * CHUNK_DATA
-            buf[off + CHUNK_HEADER:off + CHUNK_HEADER + dlen] = jpeg_bytes[src:src + dlen]
+            srcp = i * CHUNK_DATA
+            buf[off + CHUNK_HEADER:off + CHUNK_HEADER + dlen] = jview[srcp:srcp + dlen]
+            # chunk'in kalanini sifirla (onceki kareden kalinti olmasin)
+            buf[off + CHUNK_HEADER + dlen:off + CHUNK_SIZE] = b"\x00" * (CHUNK_SIZE - CHUNK_HEADER - dlen)
 
-        # parca sayisini 4'un katina tamamla (LY)
-        padded = num_chunks + ((4 - num_chunks % 4) % 4)
-        total_bytes = padded * CHUNK_SIZE
-        send_buf = bytes(buf) + bytes(total_bytes - len(buf))
+        # padding chunk'larini sifirla
+        if padded > num_chunks:
+            buf[num_chunks * CHUNK_SIZE:total_bytes] = b"\x00" * (total_bytes - num_chunks * CHUNK_SIZE)
 
+        # USB yazma: memoryview dilimleri (KOPYASIZ)
+        view = self._sview
         pos = 0
         while pos < total_bytes:
             remaining = total_bytes - pos
             wsize = USB_WRITE_SIZE if remaining >= USB_WRITE_SIZE else min(2048, remaining)
-            self.dev.write(self.ep_out, send_buf[pos:pos + wsize], TIMEOUT_WRITE)
+            self.dev.write(self.ep_out, view[pos:pos + wsize], TIMEOUT_WRITE)
             pos += USB_WRITE_SIZE
 
         # ACK
         try:
             self.dev.read(self.ep_in, HANDSHAKE_READ, TIMEOUT_READ)
         except usb.core.USBError:
-            pass    # bazi kareler ACK vermeyebilir
+            pass
         return True
+
+    def send_array(self, arr):
+        """Numpy (H,W,3 uint8, onceden dondurulmus) -> PIL JPEG -> gonder.
+        pygame.image.save SIZINTILI (kare basina ~6 nesne birakiyor) - PIL temiz."""
+        from PIL import Image
+        if not hasattr(self, "_jbuf"):
+            self._jbuf = io.BytesIO()
+        self._jbuf.seek(0); self._jbuf.truncate(0)
+        img = Image.frombuffer("RGB", (arr.shape[1], arr.shape[0]), arr, "raw", "RGB", 0, 1)
+        img.save(self._jbuf, "JPEG", quality=90)
+        return self.send_jpeg(self._jbuf.getvalue())
 
     def send_surface_prerotated(self, surface):
         """Onceden dondurulmus Surface -> JPEG -> gonder. KALICI buffer
