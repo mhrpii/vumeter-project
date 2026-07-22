@@ -160,11 +160,12 @@ def _short_disk_name(model):
 
 
 
-def draw_sysmon_disks(surf, disks):
+def draw_sysmon_disks(surf, disks, usage=None):
     """SAYFA 2: 9 diskin sicakliklari (ust: NVMe, alt: SATA)."""
     surf.fill((8, 10, 8))
     WIDTH, HEIGHT = surf.get_size()
     SCALE = max(0.35, WIDTH / 1920.0)   # LCD (1920) referansli olcek
+    usage = usage or {}
 
     def temp_color(t):
         if t is None: return (60, 66, 60)
@@ -197,7 +198,7 @@ def draw_sysmon_disks(surf, disks):
             pygame.draw.rect(surf, (35, 43, 54), (cx0, row_top, card_w, row_h), 1, border_radius=12)
             # gauge halka
             gcx = ccx; gcy = row_top + int(row_h * 0.40)
-            gr = int(min(card_w, row_h) * 0.42)
+            gr = int(min(card_w, row_h) * 0.38)   # bar ile teget olmasin
             gcol = _sm_grad_rgb(frac)
             draw_card_gauge_m(surf, gcx, gcy, gr, frac, gcol)
             # sicaklik rakami
@@ -218,6 +219,24 @@ def draw_sysmon_disks(surf, disks):
                 nf = _font(nsize)
             ns = nf.render(name, True, (225, 232, 242))
             surf.blit(ns, (ccx - ns.get_width()//2, row_top + int(row_h*0.80)))
+            # DIKEY DOLULUK BARI (sol ic kenar) - fiziksel disk tamami
+            pct = usage.get(model, 0.0)
+            bw = max(5, int(card_w * 0.055))
+            bx = cx0 + 6
+            bt = row_top + int(row_h * 0.10)
+            bh = int(row_h * 0.62)
+            pygame.draw.rect(surf, (14, 18, 24), (bx, bt, bw, bh), border_radius=3)
+            p = max(0.0, min(100.0, pct))
+            fh = int(bh * p / 100.0)
+            if p < 70:   bcol = (60, 210, 90)
+            elif p < 90: bcol = (245, 205, 60)
+            else:        bcol = (235, 70, 45)
+            if fh > 0:
+                pygame.draw.rect(surf, bcol, (bx, bt + bh - fh, bw, fh), border_radius=3)
+            pygame.draw.rect(surf, (40, 48, 60), (bx, bt, bw, bh), 1, border_radius=3)
+            pf2 = _font(nsize)
+            psb = pf2.render(f"%{p:.0f}", True, bcol)
+            surf.blit(psb, (bx + bw//2 - psb.get_width()//2 + 2, bt + bh + 4))
 
     half = HEIGHT // 2
     draw_disk_row(nvme, 34, half - 40, "nvme")
@@ -318,7 +337,7 @@ _page = [0]   # 0=kartlar, 1=disk, 2=cekirdek (1/2/3 tuslari)
 
 def draw(screen, d):
     if _page[0] == 1:
-        draw_sysmon_disks(screen, d.get("disks") or [])
+        draw_sysmon_disks(screen, d.get("disks") or [], d.get("disk_usage"))
         return
     if _page[0] == 2:
         draw_sysmon_cores(screen, d.get("ipg") or {})

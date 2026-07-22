@@ -504,8 +504,10 @@ def _short_disk_name(model):
     return m[:20]
 
 
-def draw_sysmon_disks(surf, disks):
-    """SAYFA 2: 9 diskin sicakliklari (ust: NVMe, alt: SATA)."""
+def draw_sysmon_disks(surf, disks, usage=None):
+    """SAYFA 2: 9 diskin sicakliklari (ust: NVMe, alt: SATA).
+    usage: {model: yuzde} - kartin sol kenarina dikey doluluk bari (fiziksel disk tamami)."""
+    usage = usage or {}
     surf.fill((8, 10, 8))
 
     def temp_color(t):
@@ -545,11 +547,13 @@ def draw_sysmon_disks(surf, disks):
             # sicaklik rakami
             vf = _sm_font(int(gr * 0.9))
             vs = vf.render(f"{temp}", True, gcol)
-            surf.blit(vs, (gcx - vs.get_width()//2, gcy - vs.get_height()//2))
-            # C birimi
-            uf = _sm_font(14)
-            us = uf.render("C", True, (170, 182, 196))
-            surf.blit(us, (ccx - us.get_width()//2, row_top + int(row_h*0.66)))
+            vx = gcx - vs.get_width()//2
+            vy = gcy - vs.get_height()//2
+            surf.blit(vs, (vx, vy))
+            # C birimi: rakamin SAG USTUNE (derece isareti gibi)
+            uf = _sm_font(max(11, int(gr * 0.32)))
+            us = uf.render("°C", True, (170, 182, 196))
+            surf.blit(us, (vx + vs.get_width() + 2, vy - 2))
             # disk adi - kisa ve okunakli isim
             name = _short_disk_name(model)
             # karta sigacak en buyuk fontu bul (18'den asagi)
@@ -560,6 +564,25 @@ def draw_sysmon_disks(surf, disks):
                 nf = _sm_font(nsize)
             ns = nf.render(name, True, (225, 232, 242))
             surf.blit(ns, (ccx - ns.get_width()//2, row_top + int(row_h*0.80)))
+            # DIKEY DOLULUK BARI (sol ic kenar): fiziksel diskin tamamina gore.
+            pct = usage.get(model, 0.0)   # bagli degilse 0 goster (bar bos)
+            if True:
+                bw = max(6, int(card_w * 0.055))
+                bx = cx0 + 7
+                bt = row_top + int(row_h * 0.10)
+                bh = int(row_h * 0.62)
+                pygame.draw.rect(surf, (14, 18, 24), (bx, bt, bw, bh), border_radius=3)
+                p = max(0.0, min(100.0, pct))
+                fh = int(bh * p / 100.0)
+                if p < 70:   bcol = (60, 210, 90)
+                elif p < 90: bcol = (245, 205, 60)
+                else:        bcol = (235, 70, 45)
+                if fh > 0:
+                    pygame.draw.rect(surf, bcol, (bx, bt + bh - fh, bw, fh), border_radius=3)
+                pygame.draw.rect(surf, (40, 48, 60), (bx, bt, bw, bh), 1, border_radius=3)
+                pf2 = _sm_font(nsize)   # disk adiyla ayni boyut (karta sigan)
+                psb = pf2.render(f"%{p:.0f}", True, bcol)
+                surf.blit(psb, (bx + bw//2 - psb.get_width()//2 + 2, bt + bh + 4))
 
     half = HEIGHT // 2
     draw_disk_row(nvme, 34, half - 40, "nvme")
@@ -662,7 +685,7 @@ def draw_sysmon(surf, fps):
     d = mon.snapshot()
     # SAYFA 1: disk sicakliklari
     if _state.get("sysmon_page", 0) == 1:
-        draw_sysmon_disks(surf, d.get("disks") or [])
+        draw_sysmon_disks(surf, d.get("disks") or [], d.get("disk_usage"))
         return
     # SAYFA 2: cekirdek isi haritasi (Intel Power Gadget)
     if _state.get("sysmon_page", 0) == 2:
@@ -1667,7 +1690,7 @@ def main():
             # HAM ortalama ile karar (gain'den bagimsiz): sakin pasajlarda
             # gain dusukken bile gercek muzik ham veride gorunur.
             # Esik 10: Scarlett self-noise ustunde, sakin muzik altinda degil.
-            if snap and getattr(cava, "raw_mean", 0) > 10:
+            if snap and getattr(cava, "raw_mean", 0) > 2:
                 _state["last_sound"] = time.time()
             idle = (time.time() - _state.get("last_sound", 0)) > 15.0
             # AUTOSENS dinamik: kisa sessizliklerde (sarki arasi) ACIK kalir ki

@@ -189,6 +189,89 @@ def _read_disks():
     return disks
 
 
+
+# ==================== DISK DOLULUK (fiziksel disk bazli) ====================
+_du_cache = {"t": 0, "map": {}}
+
+def _diskutil_plist(args):
+    import subprocess, plistlib
+    try:
+        out = subprocess.run(["diskutil"] + args, capture_output=True, timeout=10).stdout
+        return plistlib.loads(out)
+    except Exception:
+        return None
+
+def disk_usage_map():
+    """{model: yuzde} - fiziksel diskin TAMAMI (tum bolumler; APFS container dahil).
+    Bagli olmayan disk (ornek: Linux bolumu) -> anahtar yok (bar cizilmez).
+    60 sn onbellek (diskutil yavas)."""
+    import time as _t, re
+    import psutil
+    now = _t.time()
+    if now - _du_cache["t"] < 60:
+        return _du_cache["map"]
+    _du_cache["t"] = now
+    try:
+        lst = _diskutil_plist(["list", "-plist"])
+        if not lst:
+            return _du_cache["map"]
+        fiziksel, container_map, sanal_parts = {}, {}, {}
+        for d in lst.get("AllDisksAndPartitions", []):
+            ident = d.get("DeviceIdentifier", "")
+            parts = [p.get("DeviceIdentifier", "") for p in
+                     (d.get("Partitions") or d.get("APFSVolumes") or [])]
+            info = _diskutil_plist(["info", "-plist", ident])
+            if not info:
+                continue
+            if info.get("VirtualOrPhysical") == "Virtual":
+                sanal_parts[ident] = parts
+                for s in (info.get("APFSPhysicalStores") or []):
+                    m = re.match(r"(disk\d+)s\d+", s.get("APFSPhysicalStore", ""))
+                    if m:
+                        container_map[ident] = m.group(1)
+            else:
+                model = (info.get("MediaName") or "").strip()
+                size = info.get("TotalSize") or info.get("Size") or 0
+                if model:
+                    fiziksel[ident] = {"model": model, "size": size, "parts": parts}
+        mounts = {}
+        for p in psutil.disk_partitions(all=False):
+            dev = p.device.replace("/dev/", "")
+            try:
+                u = psutil.disk_usage(p.mountpoint)
+                mounts[dev] = (u.used, u.total, u.free)
+            except Exception:
+                pass
+        def kullanim(part_ids):
+            toplam, apfs_gorulen, bagli = 0, set(), False
+            for pid in part_ids:
+                for dev, (used, total, free) in mounts.items():
+                    if dev == pid or dev.startswith(pid + "s"):
+                        bagli = True
+                        m = re.match(r"(disk\d+)s", dev)
+                        grup = m.group(1) if m else dev
+                        if grup in sanal_parts:
+                            if grup not in apfs_gorulen:
+                                apfs_gorulen.add(grup)
+                                toplam += total - free
+                        else:
+                            toplam += used
+            return toplam, bagli
+        yeni = {}
+        for ident, f in fiziksel.items():
+            parts = list(f["parts"])
+            for sanal, fiz in container_map.items():
+                if fiz == ident:
+                    parts += sanal_parts.get(sanal, [])
+            used, bagli = kullanim(parts)
+            if f["size"] > 0 and bagli:
+                yeni[f["model"]] = 100.0 * used / f["size"]
+        _du_cache["map"] = yeni
+    except Exception:
+        pass
+    return _du_cache["map"]
+
+
 class SysMonitor:
     def __init__(self, interval=1.5):
         _ensure_built(_SMC_BIN, _SMC_SRC, "smc_read")     # SMC okuyucu
@@ -295,6 +378,7 @@ class SysMonitor:
                 self._disks = _read_disks()
                 self._disk_last = now
             d["disks"] = self._disks
+            d["disk_usage"] = disk_usage_map()   # {model: yuzde} - 60sn onbellekli
 
             # Intel Power Gadget: 24 cekirdek (2 sn'de bir)
             if now - self._ipg_last > 2.0:
