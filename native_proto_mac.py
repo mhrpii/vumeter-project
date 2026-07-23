@@ -2055,7 +2055,7 @@ if __name__ == "__main__":
     try:
         import sounddevice as _sd_perm
         with _sd_perm.InputStream(channels=1, blocksize=2048):
-            time.sleep(1.0)
+            time.sleep(0.15)
     except Exception as _e_perm:
         print(f"[ses] mikrofon tetigi: {type(_e_perm).__name__}")
     try:

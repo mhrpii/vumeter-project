@@ -51,3 +51,4 @@ make_aggregate
 launcher_main
 build/
 dist/
+*.dmg
