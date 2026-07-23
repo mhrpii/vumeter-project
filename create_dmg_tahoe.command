@@ -26,7 +26,7 @@ for f in smc_read.c gpu_read.c disk_read.c ipg_read.c launcher_main.c; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
-for f in kur.command kur_sarmalayici.command README_MAC.md app_icon_1024.png vumeter.spec; do
+for f in kur.command README_MAC.md app_icon_1024.png vumeter.spec; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
@@ -39,7 +39,7 @@ if [ -d "mac_deps" ]; then
     echo "    + mac_deps/ ($(ls mac_deps | wc -l | tr -d ' ') dosya)"
 fi
 
-chmod +x "$STAGING/kur.command" "$STAGING/kur_sarmalayici.command" 2>/dev/null
+chmod +x "$STAGING/kur.command" 2>/dev/null
 
 cat > "$STAGING/1_OKU_ONCE.txt" << 'TXT'
 VU Meter LCD — Tahoe (macOS 26) Kurulumu
@@ -52,15 +52,10 @@ VU Meter LCD — Tahoe (macOS 26) Kurulumu
    - Python kutuphanelerini kurar, C araclarini derler,
      uygulamayi /Applications'a koyar.
 
-3) "kur_sarmalayici.command" dosyasina CIFT TIKLA.
-   - "VU Meter LCD Baslat" adinda bir uygulama olusturur.
-   - Tahoe'da mikrofon izni imzasiz uygulamalara verilmedigi icin
-     uygulama Terminal uzerinden baslatilir. Bu sarmalayici onu yapar.
-
-4) SES: Sistem Ayarlari > Ses > Cikis = loopback ozellikli ses karti
+3) SES: Sistem Ayarlari > Ses > Cikis = loopback ozellikli ses karti
    (ornek: Focusrite Scarlett). Ek yazilim (BlackHole vb.) gerekmez.
 
-5) Paneli tak, Launchpad'de "VU Meter LCD Baslat" ile ac.
+4) Paneli tak, Launchpad'de "VU Meter LCD Baslat" ile ac.
    Ilk acilista Terminal otomasyon izni sorulur -> Izin Ver.
 
 NOT: Uygulamayi dogrudan "VU Meter LCD" ile acarsan panel calisir
