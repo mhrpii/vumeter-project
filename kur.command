@@ -162,6 +162,40 @@ touch "$APP"
 echo "[OK] Uygulama kuruldu: $APP"
 echo ""
 echo "=================================================="
+
+# --- Terminal sarmalayici (Tahoe mikrofon izni icin) ---
+echo ""
+echo "[*] Baslatici uygulama olusturuluyor..."
+WRAP="/Applications/VU Meter LCD Baslat.app"
+PROJDIR="$(pwd)"
+rm -rf "$WRAP"
+mkdir -p "$WRAP/Contents/MacOS"
+cat > "$WRAP/Contents/Info.plist" << 'PL'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>VU Meter LCD Baslat</string>
+    <key>CFBundleIdentifier</key><string>com.mhrpii.vumeterlcd.baslat</string>
+    <key>CFBundleExecutable</key><string>baslat</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleVersion</key><string>1.0</string>
+    <key>LSUIElement</key><true/>
+</dict>
+</plist>
+PL
+cat > "$WRAP/Contents/MacOS/baslat" << SH
+#!/bin/bash
+osascript <<OSA
+tell application "Terminal"
+    set w to do script "pkill -f native_proto_mac; pkill -f 'cava -p'; sleep 2; cd $PROJDIR && python3 -u native_proto_mac.py Spektrum"
+    set visible of front window to false
+end tell
+OSA
+SH
+chmod +x "$WRAP/Contents/MacOS/baslat"
+echo "[OK] Baslatici kuruldu: VU Meter LCD Baslat"
+
 codesign --force --deep --sign - "$APP" 2>/dev/null && echo "[OK] .app imzalandi (adhoc)"
 echo "  Kurulum tamamlandi!"
 echo ""
