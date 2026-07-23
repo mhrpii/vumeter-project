@@ -148,7 +148,7 @@ cat > "$APP/Contents/MacOS/launcher" << SH
 #!/bin/bash
 osascript <<OSA
 tell application "Terminal"
-    set w to do script "pkill -f native_proto_mac; pkill -f 'cava -p'; sleep 0.5; cd $PROJDIR_MAIN && python3 -u native_proto_mac.py Spektrum"
+    set w to do script "pkill -f native_proto_mac; pkill -f 'cava -p'; sleep 0.5; cd '$PROJDIR_MAIN' && python3 -u native_proto_mac.py Spektrum"
     set visible of front window to false
 end tell
 OSA
