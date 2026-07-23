@@ -95,6 +95,21 @@ int main(void) {
         kCFAllocatorDefault, 0,
         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionarySetValue(sub, CFSTR(kAudioSubDeviceUIDKey), scarlett_uid);
+    /* GIRIS KANAL HARITASI: Scarlett kanal 3-4 (loopback) -> aggregate 1-2.
+       Boylece aggregate 2 kanalli olur ve icinde SADECE muzik olur;
+       cava hangi modda acarsa acsin loopback'i gorur. */
+    {
+        int map[4] = { -1, -1, 0, 1 };
+        CFMutableArrayRef mapArr = CFArrayCreateMutable(kCFAllocatorDefault, 4,
+                                                        &kCFTypeArrayCallBacks);
+        for (int k = 0; k < 4; k++) {
+            CFNumberRef n = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &map[k]);
+            CFArrayAppendValue(mapArr, n);
+            CFRelease(n);
+        }
+        CFDictionarySetValue(sub, CFSTR("channel-map-in"), mapArr);
+        CFRelease(mapArr);
+    }
     const void *subs[1] = { sub };
     CFArrayRef subArr = CFArrayCreate(kCFAllocatorDefault, subs, 1, &kCFTypeArrayCallBacks);
     CFDictionarySetValue(desc, CFSTR(kAudioAggregateDeviceSubDeviceListKey), subArr);

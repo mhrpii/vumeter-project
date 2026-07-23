@@ -79,17 +79,9 @@ def _detect_mac_audio_source():
       4) ilk ses aygiti"""
     if _MAC_AUDIO_CACHE["src"]:
         return _MAC_AUDIO_CACHE["src"]
-    # TAHOE COZUMU: VU-ScarlettLoop aggregate (make_aggregate dogruladiysa
-    # ismi DOGRUDAN kullan - sounddevice surec-ici onbellegi yeni aygiti
-    # goremeyebiliyor, make_aggregate ayri surec oldugu icin her zaman taze).
-    if _ensure_aggregate():
-        _MAC_AUDIO_CACHE["src"] = "VU-ScarlettLoop"
-        return "VU-ScarlettLoop"
-    # (genel aggregate yedegi - kullanicinin kendi olusturdugu varsa)
-    for n in _sd_device_names():
-        if "Aggregate" in n or "ScarlettLoop" in n:
-            _MAC_AUDIO_CACHE["src"] = n
-            return n
+    # NOT: Aggregate yolu (VU-ScarlettLoop) DEVRE DISI - Tahoe'da da
+    # dogrudan Scarlett + channels=1 mono karisimi loopback'i iceriyor
+    # (kanitlandi). Aggregate gereksiz karmasiklik yaratiyordu.
     src = None
     default_out = None
     names = []
@@ -1045,7 +1037,7 @@ def write_cava_config(bars=NUM_BARS, fps=60, autosens=0):
     # VU-ScarlettLoop (aggregate): stereo modda CoreAudio 4->2 karisimi
     # loopback'i DAHIL EDIYOR (mono taze aggregate'te kanal 1'e esleniyor - sessiz).
     # Diger kaynaklarda mono karisim (eski davranis) korunur.
-    _ch = 2 if "ScarlettLoop" in _src or "Aggregate" in _src else 1
+    _ch = 1   # eski calisan ayar: mono karisim loopback'i icerir
     """Mac: portaudio + sabit Scarlett kaynagi. autosens dinamik (idle'da 0, muzikte 1)."""
     os.makedirs(os.path.dirname(CAVA_CONFIG), exist_ok=True)
     with open(CAVA_CONFIG, "w") as f:
@@ -1250,10 +1242,21 @@ class CavaReader:
             print(f"[ses] uyandirma atlandi: {type(e).__name__}")
 
     def _start(self):
+        # CIFT CAVA KORUMASI: onceki surec yasiyorsa oldur (open ile acilista
+        # yaris durumu iki cava yaratiyordu -> ikisi de ayni aygita baglanip
+        # sessiz akisa dusuyor -> muzik varken VINTAGE).
+        try:
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.kill()
+                self.proc.wait(timeout=2)
+        except Exception:
+            pass
+        subprocess.run(["pkill", "-9", "-f", "cava -p " + CAVA_CONFIG],
+                       capture_output=True)   # baska kopya kaldiysa da temizle
+        time.sleep(0.3)
         _wait_for_source()
         self._active_source = _find_scarlett_monitor()
         write_cava_config(autosens=self._cur_autosens)
-        self._wake_aggregate()
         self.proc = subprocess.Popen([_find_cava_bin(), "-p", CAVA_CONFIG], stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
         self._zero_since = None
@@ -2043,4 +2046,20 @@ def main():
 
 
 if __name__ == "__main__":
+    # PyInstaller (donmus .app) icin ZORUNLU: alt surecler ana programi
+    # yeniden calistirmasin diye. Bu satir olmadan sonsuz kopya acilir.
+    mp.freeze_support()
+    # MIKROFON IZNI TETIGI: .app kimligiyle kisa bir giris akisi ac.
+    # Istem bu sayede uygulamaya sorulur; izin verilince alt surec (cava) da
+    # ayni izinle calisir. Terminalden calistirmada zararsizdir.
+    try:
+        import sounddevice as _sd_perm
+        with _sd_perm.InputStream(channels=1, blocksize=2048):
+            time.sleep(1.0)
+    except Exception as _e_perm:
+        print(f"[ses] mikrofon tetigi: {type(_e_perm).__name__}")
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
     main()

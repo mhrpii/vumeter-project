@@ -120,6 +120,7 @@ else
     echo "    [!] Intel Power Gadget yok — cekirdek isi haritasi calismaz (opsiyonel)."
 fi
 compile make_aggregate make_aggregate.c -framework CoreAudio -framework CoreFoundation
+compile launcher_main launcher_main.c
 if [ -x "make_aggregate" ]; then
     AGGOUT=$(./make_aggregate)
     echo "    [*] Aggregate Device (Tahoe ses yolu): $AGGOUT"
@@ -151,19 +152,12 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>10.13</string>
     <key>LSUIElement</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
 </dict>
 </plist>
 PLIST
 
-cat > "$APP/Contents/MacOS/launcher" << 'LAUNCH'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
-cd "$DIR" || exit 1
-pkill -f native_proto_mac 2>/dev/null
-sleep 1
-PY="$(command -v python3)"
-exec "$PY" native_proto_mac.py "Spektrum"
-LAUNCH
+cp launcher_main "$APP/Contents/MacOS/launcher"
 chmod +x "$APP/Contents/MacOS/launcher"
 
 if [ -f "app_icon_1024.png" ]; then
@@ -182,6 +176,7 @@ touch "$APP"
 echo "[OK] Uygulama kuruldu: $APP"
 echo ""
 echo "=================================================="
+codesign --force --deep --sign - "$APP" 2>/dev/null && echo "[OK] .app imzalandi (adhoc)"
 echo "  Kurulum tamamlandi!"
 echo ""
 echo "  - Paneli tak, Launchpad/Spotlight'ta 'VU Meter LCD' ac"
