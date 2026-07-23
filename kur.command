@@ -97,7 +97,7 @@ echo ""
 echo "[*] Python kutuphaneleri kuruluyor..."
 PYBIN="$(command -v python3)"
 [ -z "$PYBIN" ] && { echo "[!] python3 yok: xcode-select --install"; read -p "Enter..."; }
-"$PYBIN" -m pip install --user pygame PyQt5 numpy psutil pyusb 2>&1 | tail -2
+"$PYBIN" -m pip install --user pygame PyQt5 numpy psutil pyusb Pillow 2>&1 | tail -2
 echo "[OK] Python kutuphaneleri hazir."
 
 # --- 5) C araclarini derle ---

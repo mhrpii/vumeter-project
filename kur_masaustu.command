@@ -16,7 +16,7 @@ echo "[OK] python3: $(python3 --version)"
 
 # --- 2) Python paketleri ---
 echo "[*] Python paketleri kontrol ediliyor (pygame, numpy, PyQt5, psutil)..."
-python3 -m pip install --quiet --user pygame numpy PyQt5 psutil 2>/dev/null
+python3 -m pip install --quiet --user pygame numpy PyQt5 psutil Pillow 2>/dev/null
 echo "[OK] paketler hazir"
 
 # --- 3) cava kontrol (mac_deps'ten offline kurulum destekli) ---
