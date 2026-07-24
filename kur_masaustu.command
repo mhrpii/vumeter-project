@@ -85,7 +85,7 @@ cat > "$APP/Contents/MacOS/launcher" << SH
 #!/bin/bash
 osascript <<OSA
 tell application "Terminal"
-    set w to do script "pkill -f vumeter_mac_desktop; pkill -f 'cava -p'; sleep 0.5; cd '$PROJDIR_DESK' && python3 -u vumeter_mac_desktop.py"
+    set w to do script "pkill -f vumeter_mac_desktop; pkill -f 'cava -p'; sleep 0.5; cd '/Applications/VU Meter Masaustu.app/Contents/Resources/app' && python3 -u vumeter_mac_desktop.py"
     set visible of front window to false
 end tell
 OSA
