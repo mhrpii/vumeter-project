@@ -2,6 +2,24 @@
 # kur_masaustu.command — VU Meter MASAUSTU Mac kurulum ("VU Meter Masaustu.app")
 # LCD panel GEREKMEZ - gorselleştirme pencerede calisir.
 cd "$(dirname "$0")" || exit 1
+
+# --- DMG kontrolu: salt okunur birimden kurulum yapilamaz ---
+if [[ "$(pwd)" == /Volumes/* ]] && [ ! -w "$(pwd)" ]; then
+    echo ""
+    echo "=================================================="
+    echo "  HATA: DMG icinden calistiriyorsunuz!"
+    echo ""
+    echo "  Bu klasor salt okunur oldugu icin sensor araclari"
+    echo "  derlenemez (disk isilari, fanlar calismaz)."
+    echo ""
+    echo "  YAPIN: Bu klasorun tamamini Masaustu'ne KOPYALAYIN,"
+    echo "         sonra oradaki kur_masaustu.command dosyasini calistirin."
+    echo "=================================================="
+    echo ""
+    read -p "Kapatmak icin Enter..."
+    exit 1
+fi
+
 echo "=================================================="
 echo "  VU METER MASAUSTU - Mac Kurulum"
 echo "=================================================="
