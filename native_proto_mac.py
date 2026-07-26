@@ -42,33 +42,6 @@ def _sd_device_names():
         return []
 
 
-def _ensure_aggregate():
-    """Tahoe+ ses yolu: VU-ScarlettLoop aggregate yoksa make_aggregate ile olustur.
-    (Kullanici Audio MIDI'den silse bile acilista kendini onarir.)"""
-    try:
-        if any("VU-ScarlettLoop" in n for n in _sd_device_names()):
-            return True
-        # get_resource_path henuz tanimli degil (dosyanin asagisinda) ->
-        # yolu dogrudan coz: script'in kendi dizini (.app icinde de dogru)
-        binp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_aggregate")
-        if os.path.exists(binp):
-            out = subprocess.run([binp], capture_output=True, text=True,
-                                 timeout=10).stdout.strip()
-            print(f"[ses] aggregate kontrol: {out}")
-            # CoreAudio'nun aygiti kaydetmesini BEKLE (yoklamali, en fazla 5sn):
-            # 1sn sabit bekleme yetmiyordu -> kaynak cache'i Scarlett'e dusuyordu.
-            for _ in range(10):
-                time.sleep(0.5)
-                chk = subprocess.run([binp], capture_output=True, text=True,
-                                     timeout=10).stdout.strip()
-                if chk == "VAR":
-                    print("[ses] VU-ScarlettLoop hazir.")
-                    return True
-    except Exception as e:
-        print(f"[ses] aggregate olusturulamadi: {type(e).__name__}")
-    return False
-
-
 def _detect_mac_audio_source():
     """cava (portaudio) icin uygun ses kaynagini otomatik bul.
     Mantik: cava, sesin CIKTIGI aygiti dinlemeli (o aygitin sesini gorsellestirir).
@@ -1307,6 +1280,26 @@ class CavaReader:
             pass
         self.proc = None
         self._zero_since = None
+        # UYKU TOPARLAMA: cava'yi yeniden baslatmadan once ses yolunu sounddevice
+        # ile isit. Mac uykudan kalkinca cava/portaudio loopback'e baglanamiyor
+        # (reboot gerektiriyordu); sounddevice uyku sonrasi calisiyor -> CoreAudio
+        # akisini canlandiriyor, ardindan cava normal baglaniyor.
+        self._wake_audio()
+
+    def _wake_audio(self):
+        try:
+            import sounddevice as _sd
+            idx = None
+            for i, d in enumerate(_sd.query_devices()):
+                if 'Scarlett' in d['name'] and d['max_input_channels'] >= 4:
+                    idx = i
+                    break
+            if idx is None:
+                return
+            with _sd.InputStream(device=idx, channels=4, blocksize=4096):
+                time.sleep(1.5)
+        except Exception:
+            pass
 
     def _reset_pipewire(self):
         """Son care: PipeWire monitor hatti oldugunde tazele (reboot yerine)."""
@@ -1358,7 +1351,7 @@ class CavaReader:
                             # Eski 5sn kurali cava'yi olduruyordu -> restart+warmup
                             # 10-20sn boslugu yaratip muzikte VINTAGE'a sebep oluyordu.
                             # Restart SADECE cok uzun sifirda (120sn) tek deneme.
-                            if elapsed > 120.0 and not self._pw_reset_done:
+                            if elapsed > 30.0 and not self._pw_reset_done:
                                 self._restart_cava()
                                 self._pw_reset_done = "cava"
                                 continue
@@ -1504,7 +1497,7 @@ def _vlog(msg):
         pass
 
 
-def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
+def sender_process_main(shm_name, frame_counter, w, h, brightness=None, usb_warn=None):
     """Ayri surec: shared memory'den kareyi al -> DOGRUDAN USB ile panele yaz.
     trcc / HTTP / PNG / disk YOK. (trcc_direct.py protokolu kullanir)
 
@@ -1533,6 +1526,18 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None):
                 return d
             except Exception as e:
                 deneme += 1
+                # UZUN KILIT: 15. denemede macOS bildirimi (bir kez).
+                # Panele yaziyla ulasamayiz (baglanti yok) - sistem bildirimi
+                # her durumda gorunur. Uyku sonrasi USB firmware kilidi fiziksel
+                # cikar-tak gerektiriyor.
+                if deneme == 15:
+                    try:
+                        import subprocess as _sp
+                        _sp.Popen(["osascript", "-e",
+                            'display notification "USB kablosunu cikarip yeniden takin" '
+                            'with title "VU Meter LCD" subtitle "Panel baglanamiyor"'])
+                    except Exception:
+                        pass
                 if deneme <= 3 or deneme % 12 == 0:
                     _vlog(f"[sender] baglanti bekleniyor ({deneme}): {type(e).__name__}: {e}")
                 try:
@@ -1887,8 +1892,9 @@ def main():
     threading.Thread(target=_weather_worker, daemon=True).start()
 
     bright_val = mp.Value('i', int(_state.get("brightness", 100)))
+    usb_warn = mp.Value('i', 0)   # USB uzun kilit uyarisi (sender->render)
     send_proc = mp.Process(target=sender_process_main,
-                          args=(shm.name, frame_counter, WIDTH, HEIGHT, bright_val),
+                          args=(shm.name, frame_counter, WIDTH, HEIGHT, bright_val, usb_warn),
                           daemon=True)
     send_proc.start()
 

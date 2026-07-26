@@ -125,11 +125,6 @@ else
 fi
 compile make_aggregate make_aggregate.c -framework CoreAudio -framework CoreFoundation
 compile launcher_main launcher_main.c
-if [ -x "make_aggregate" ]; then
-    AGGOUT=$(./make_aggregate)
-    echo "    [*] Aggregate Device (Tahoe ses yolu): $AGGOUT"
-fi
-
 # --- 6) .app bundle olustur ---
 echo ""
 echo "[*] Uygulama (.app) olusturuluyor..."
@@ -140,7 +135,7 @@ mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources/app"
 cp *.py                                 "$APP/Contents/Resources/app/" 2>/dev/null
 cp *.c                                  "$APP/Contents/Resources/app/" 2>/dev/null
-cp smc_read gpu_read disk_read ipg_read make_aggregate "$APP/Contents/Resources/app/" 2>/dev/null
+cp smc_read gpu_read disk_read ipg_read "$APP/Contents/Resources/app/" 2>/dev/null
 cp *.png                                "$APP/Contents/Resources/app/" 2>/dev/null
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
