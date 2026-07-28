@@ -5,38 +5,6 @@ Sadece SPEKTRUM modu - iskeleti kanitlamak icin. Mac mimarisi referans.
 Akis: cava -> ana dongu native yatay ciz -> shared_memory -> ayri sender
 process -> trcc API display/theme -> panel (native, net, akici).
 """
-# ==================== MIKROFON IZNI (EN BASTA) ====================
-# ONEMLI: bu blok agir import'lardan (numpy/pygame/PyQt5) ONCE calisir.
-# PyInstaller paketinde o kutuphaneler 40+ saniye yuklenebiliyor; izin istemi
-# sonra cikinca kullanici uzun bekliyordu. Burada aninda sorulur.
-import os as _os0, sys as _sys0, subprocess as _sp0
-
-def _mikrofon_izni_al():
-    try:
-        _b = _os0.path.dirname(_os0.path.abspath(_sys0.executable))
-        _m = _os0.path.join(_b, "mic_permission")
-        if not _os0.path.exists(_m):
-            _m = _os0.path.join(_os0.path.dirname(_os0.path.abspath(__file__)), "mic_permission")
-        if not _os0.path.exists(_m):
-            return None
-        _r = _sp0.run([_m], capture_output=True, text=True, timeout=180)
-        _d = _r.stdout.strip()
-        print(f"[ses] mikrofon izni: {_d}")
-        if _d in ("IZIN_REDDEDILDI", "IZIN_KISITLI"):
-            try:
-                _sp0.Popen(["osascript", "-e",
-                    'display notification '
-                    '"Sistem Ayarlari > Gizlilik ve Guvenlik > Mikrofon bolumunden '
-                    'VU Meter LCD icin izin verin" '
-                    'with title "VU Meter LCD" subtitle "Mikrofon izni kapali"'])
-            except Exception:
-                pass
-        return _d
-    except Exception as _e:
-        print(f"[ses] mikrofon izin araci: {type(_e).__name__}")
-        return None
-
-_MIC_DURUM = _mikrofon_izni_al()
 
 import os
 import sys
@@ -1051,7 +1019,7 @@ def write_cava_config(bars=NUM_BARS, fps=60, autosens=0):
 bars = {bars}
 framerate = {fps}
 autosens = {autosens}
-sensitivity = 100
+sensitivity = 400
 
 [input]
 method = portaudio
@@ -1223,29 +1191,6 @@ class CavaReader:
         self._pw_reset_done = False
         self._t = threading.Thread(target=self._loop, daemon=True)
         self._t.start()
-
-    def _wake_aggregate(self):
-        """Aggregate'i uyandir: sounddevice ile 1sn dinle (kanitlanmis tetik).
-        Taze/uykudaki aggregate cava'ya sifir verir; sounddevice acilisi
-        CoreAudio akisini aktive eder, ardindan cava normal okur."""
-        try:
-            srcname = _MAC_AUDIO_CACHE.get("src") or ""
-            if "ScarlettLoop" not in srcname and "Aggregate" not in srcname:
-                return
-            import sounddevice as _sdv
-            idx = None
-            for i, d in enumerate(_sdv.query_devices()):
-                if srcname in d["name"] and d["max_input_channels"] > 0:
-                    idx = i
-                    break
-            if idx is None:
-                return
-            _n = max(2, min(4, _sdv.query_devices(idx)["max_input_channels"]))
-            with _sdv.InputStream(device=idx, channels=_n, blocksize=4096):
-                time.sleep(1.0)
-            print("[ses] aggregate uyandirildi (sounddevice tetigi)")
-        except Exception as e:
-            print(f"[ses] uyandirma atlandi: {type(e).__name__}")
 
     def _start(self):
         # CIFT CAVA KORUMASI: onceki surec yasiyorsa oldur (open ile acilista
@@ -2088,14 +2033,18 @@ if __name__ == "__main__":
     # PyInstaller (donmus .app) icin ZORUNLU: alt surecler ana programi
     # yeniden calistirmasin diye. Bu satir olmadan sonsuz kopya acilir.
     mp.freeze_support()
-    # Izin ILK KEZ verildiyse ses zinciri izin oncesi basladi -> taze baslat
-    if _MIC_DURUM == "IZIN_VERILDI":
-        print("[ses] izin verildi - uygulama yeniden baslatiliyor...")
-        try:
-            _sp0.Popen(["open", "-n", "-a", "/Applications/VU Meter LCD.app"])
-        except Exception:
-            pass
-        _os0._exit(0)
+    # MIKROFON IZNI: python'un KENDISI istesin. TCC izni, istemi acan ikilinin
+    # imzasina (csreq) baglaniyor; /usr/bin/python3 Apple imzali ve sabit oldugu
+    # icin izin kalici ve islevsel olur. (C araci ile alinan izin sadece o araca
+    # ait kaliyordu, cava/python kullanamiyordu.)
+    try:
+        import subprocess as _spm
+        _mp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mic_permission")
+        if os.path.exists(_mp):
+            _r = _spm.run([_mp], capture_output=True, text=True, timeout=180)
+            print(f"[ses] mikrofon izni: {_r.stdout.strip()}")
+    except Exception as _ep:
+        print(f"[ses] izin araci: {type(_ep).__name__}")
     try:
         mp.set_start_method("spawn", force=True)
     except RuntimeError:

@@ -132,6 +132,35 @@ clang -fobjc-arc -o mic_permission mic_permission.m \
       -framework Foundation -framework AVFoundation 2>/dev/null \
   && echo "[OK] mic_permission derlendi" || echo "[!] mic_permission derlenemedi"
 
+# --- Mikrofon izni: kucuk bundle ile HIZLI al ---
+# Ana .app buyuk oldugu icin LaunchServices dogrulamasi izin istemini ~45sn
+# geciktiriyor. Ayni bundle kimligiyle (com.mhrpii.vumeterlcd) kucuk bir
+# yardimci .app kullaninca istem 2 saniyede cikiyor ve izin DOGRU kimlige yazilir.
+echo ""
+echo "[*] Mikrofon izni isteniyor..."
+MICAPP="/Applications/VU Mikrofon Izni.app"
+rm -rf "$MICAPP"
+mkdir -p "$MICAPP/Contents/MacOS"
+cat > "$MICAPP/Contents/Info.plist" << 'PL'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>VU Meter LCD</string>
+    <key>CFBundleIdentifier</key><string>com.mhrpii.vumeterlcd</string>
+    <key>CFBundleExecutable</key><string>mic_permission</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleVersion</key><string>1.0</string>
+    <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
+    <key>LSUIElement</key><true/>
+</dict>
+</plist>
+PL
+cp mic_permission "$MICAPP/Contents/MacOS/" 2>/dev/null
+chmod +x "$MICAPP/Contents/MacOS/mic_permission" 2>/dev/null
+open -a "$MICAPP" 2>/dev/null
+echo "    (izin penceresi birazdan cikacak - 'Izin Ver' deyin)"
+
 echo "[*] Uygulama paketleniyor (PyInstaller)..."
 PYBIN="/Library/Developer/CommandLineTools/usr/bin/python3"
 [ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
@@ -162,6 +191,17 @@ APP="/Applications/VU Meter LCD.app"
 rm -rf "$APP"
 ditto "dist/VU Meter LCD.app" "$APP"
 echo "[OK] Uygulama kuruldu: $APP"
+
+
+echo ""
+echo "=================================================="
+echo "  Kurulum tamamlandi!"
+echo ""
+echo "  - Launchpad/Spotlight'ta 'VU Meter LCD' ile acin"
+echo "  - Ses: sistem cikisi loopback ozellikli ses kartinda olmali"
+echo "  - Ses gelmezse: Sistem Ayarlari > Ses > Cikis kontrol edin"
+echo "=================================================="
+echo ""
 
 
 read -p "Kapatmak icin Enter..."

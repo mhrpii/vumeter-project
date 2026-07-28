@@ -53,3 +53,4 @@ build/
 dist/
 *.dmg
 mic_permission
+vu_launcher
