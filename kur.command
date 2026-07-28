@@ -125,75 +125,38 @@ else
 fi
 compile make_aggregate make_aggregate.c -framework CoreAudio -framework CoreFoundation
 compile launcher_main launcher_main.c
-# --- 6) .app bundle olustur ---
+# --- 6) .app olustur (PyInstaller + imzasiz = TCC mikrofon izni calisir) ---
 echo ""
-echo "[*] Uygulama (.app) olusturuluyor..."
-APP="/Applications/VU Meter LCD.app"
-PROJDIR_MAIN="$(pwd)"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-mkdir -p "$APP/Contents/Resources/app"
-cp *.py                                 "$APP/Contents/Resources/app/" 2>/dev/null
-cp *.c                                  "$APP/Contents/Resources/app/" 2>/dev/null
-cp smc_read gpu_read disk_read ipg_read "$APP/Contents/Resources/app/" 2>/dev/null
-cp *.png                                "$APP/Contents/Resources/app/" 2>/dev/null
+echo "[*] Uygulama paketleniyor (PyInstaller)..."
+PYBIN="/Library/Developer/CommandLineTools/usr/bin/python3"
+[ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
 
-cat > "$APP/Contents/Info.plist" << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key><string>VU Meter LCD</string>
-    <key>CFBundleDisplayName</key><string>VU Meter LCD</string>
-    <key>CFBundleIdentifier</key><string>com.mhrpii.vumeterlcd</string>
-    <key>CFBundleVersion</key><string>1.0</string>
-    <key>CFBundleExecutable</key><string>launcher</string>
-    <key>CFBundleIconFile</key><string>appicon</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>LSMinimumSystemVersion</key><string>10.13</string>
-    <key>LSUIElement</key><true/>
-    <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
-</dict>
-</plist>
-PLIST
+"$PYBIN" -m pip install --user --quiet pyinstaller sounddevice 2>/dev/null
 
-cat > "$APP/Contents/MacOS/launcher" << SH
-#!/bin/bash
-osascript <<OSA
-tell application "Terminal"
-    set w to do script "pkill -f native_proto_mac; pkill -f 'cava -p'; sleep 0.5; cd '/Applications/VU Meter LCD.app/Contents/Resources/app' && python3 -u native_proto_mac.py Spektrum"
-    set visible of front window to false
-end tell
-OSA
-SH
-chmod +x "$APP/Contents/MacOS/launcher"
+rm -rf build dist
+"$PYBIN" -m PyInstaller vumeter.spec --noconfirm >/dev/null 2>&1
 
-if [ -f "app_icon_1024.png" ]; then
-    TMP="$(mktemp -d)"; ICONSET="$TMP/appicon.iconset"; mkdir -p "$ICONSET"
-    for sz in 16 32 64 128 256 512; do
-        sips -z $sz $sz app_icon_1024.png --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null 2>&1
-        d=$((sz*2)); sips -z $d $d app_icon_1024.png --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
-    done
-    cp app_icon_1024.png "$ICONSET/icon_512x512@2x.png"
-    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/appicon.icns" 2>/dev/null
-    # ikonu zorla uygula (onbellek atlatma)
-    command -v fileicon >/dev/null 2>&1 && fileicon set "$APP" app_icon_1024.png >/dev/null 2>&1
+if [ ! -d "dist/VU Meter LCD.app" ]; then
+    echo "[!] PyInstaller paketi olusturulamadi."
+    read -p "Kapatmak icin Enter..."
+    exit 1
 fi
-touch "$APP"
 
+# mikrofon izin araci bundle icine
+cp mic_permission "dist/VU Meter LCD.app/Contents/MacOS/" 2>/dev/null
+
+# KRITIK: imzayi KALDIR. Ad-hoc imza TCC mikrofon kaydini engelliyor;
+# imzasiz bundle kendi kimligiyle izin isteyebiliyor (sahada kanitlandi).
+codesign --remove-signature "dist/VU Meter LCD.app" 2>/dev/null
+codesign --remove-signature "dist/VU Meter LCD.app/Contents/MacOS/VU Meter LCD" 2>/dev/null
+
+# menu cubugu uygulamasi (Dock'ta gorunmesin)
+plutil -replace LSUIElement -bool true "dist/VU Meter LCD.app/Contents/Info.plist"
+
+APP="/Applications/VU Meter LCD.app"
+rm -rf "$APP"
+ditto "dist/VU Meter LCD.app" "$APP"
 echo "[OK] Uygulama kuruldu: $APP"
-echo ""
-echo "=================================================="
 
 
-codesign --force --deep --sign - "$APP" 2>/dev/null && echo "[OK] .app imzalandi (adhoc)"
-echo "  Kurulum tamamlandi!"
-echo ""
-echo "  - Launchpad/Spotlight'ta 'VU Meter LCD' ile acin"
-echo "    Ilk acilista Terminal otomasyon izni sorulur -> Izin Ver"
-echo "  - Ses: sistem cikisi loopback ozellikli ses kartinda olmali"
-echo "    (yukaridaki nota / README'ye bak)"
-echo "  - Ses gelmezse: Sistem Ayarlari > Ses > Cikis kontrol edin"
-echo "=================================================="
-echo ""
 read -p "Kapatmak icin Enter..."

@@ -5,6 +5,39 @@ Sadece SPEKTRUM modu - iskeleti kanitlamak icin. Mac mimarisi referans.
 Akis: cava -> ana dongu native yatay ciz -> shared_memory -> ayri sender
 process -> trcc API display/theme -> panel (native, net, akici).
 """
+# ==================== MIKROFON IZNI (EN BASTA) ====================
+# ONEMLI: bu blok agir import'lardan (numpy/pygame/PyQt5) ONCE calisir.
+# PyInstaller paketinde o kutuphaneler 40+ saniye yuklenebiliyor; izin istemi
+# sonra cikinca kullanici uzun bekliyordu. Burada aninda sorulur.
+import os as _os0, sys as _sys0, subprocess as _sp0
+
+def _mikrofon_izni_al():
+    try:
+        _b = _os0.path.dirname(_os0.path.abspath(_sys0.executable))
+        _m = _os0.path.join(_b, "mic_permission")
+        if not _os0.path.exists(_m):
+            _m = _os0.path.join(_os0.path.dirname(_os0.path.abspath(__file__)), "mic_permission")
+        if not _os0.path.exists(_m):
+            return None
+        _r = _sp0.run([_m], capture_output=True, text=True, timeout=180)
+        _d = _r.stdout.strip()
+        print(f"[ses] mikrofon izni: {_d}")
+        if _d in ("IZIN_REDDEDILDI", "IZIN_KISITLI"):
+            try:
+                _sp0.Popen(["osascript", "-e",
+                    'display notification '
+                    '"Sistem Ayarlari > Gizlilik ve Guvenlik > Mikrofon bolumunden '
+                    'VU Meter LCD icin izin verin" '
+                    'with title "VU Meter LCD" subtitle "Mikrofon izni kapali"'])
+            except Exception:
+                pass
+        return _d
+    except Exception as _e:
+        print(f"[ses] mikrofon izin araci: {type(_e).__name__}")
+        return None
+
+_MIC_DURUM = _mikrofon_izni_al()
+
 import os
 import sys
 import time
@@ -2055,15 +2088,14 @@ if __name__ == "__main__":
     # PyInstaller (donmus .app) icin ZORUNLU: alt surecler ana programi
     # yeniden calistirmasin diye. Bu satir olmadan sonsuz kopya acilir.
     mp.freeze_support()
-    # MIKROFON IZNI TETIGI: .app kimligiyle kisa bir giris akisi ac.
-    # Istem bu sayede uygulamaya sorulur; izin verilince alt surec (cava) da
-    # ayni izinle calisir. Terminalden calistirmada zararsizdir.
-    try:
-        import sounddevice as _sd_perm
-        with _sd_perm.InputStream(channels=1, blocksize=2048):
-            time.sleep(0.15)
-    except Exception as _e_perm:
-        print(f"[ses] mikrofon tetigi: {type(_e_perm).__name__}")
+    # Izin ILK KEZ verildiyse ses zinciri izin oncesi basladi -> taze baslat
+    if _MIC_DURUM == "IZIN_VERILDI":
+        print("[ses] izin verildi - uygulama yeniden baslatiliyor...")
+        try:
+            _sp0.Popen(["open", "-n", "-a", "/Applications/VU Meter LCD.app"])
+        except Exception:
+            pass
+        _os0._exit(0)
     try:
         mp.set_start_method("spawn", force=True)
     except RuntimeError:

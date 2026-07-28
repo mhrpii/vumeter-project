@@ -10,6 +10,7 @@ datas = [
     ('gpu_read', '.'),
     ('disk_read', '.'),
     ('ipg_read', '.'),
+    ('mic_permission', '.'),
 ]
 
 hidden = [
