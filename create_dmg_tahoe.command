@@ -4,7 +4,7 @@
 #
 # Tahoe farklari:
 #   - kur_sarmalayici.command dahil (mikrofon izni icin Terminal sarmalayici)
-#   - launcher_main.c (C launcher) dahil
+#   - mic_permission.m (AVFoundation mikrofon izni) dahil
 #   - aggregate/BlackHole yok; Scarlett + channels=1 dogrudan calisir
 #
 cd "$(dirname "$0")" || exit 1
@@ -22,7 +22,7 @@ for f in native_proto_mac.py sysmon_mac.py control_window.py trcc_direct.py; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
-for f in smc_read.c gpu_read.c disk_read.c ipg_read.c launcher_main.c; do
+for f in smc_read.c gpu_read.c disk_read.c ipg_read.c mic_permission.m; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 

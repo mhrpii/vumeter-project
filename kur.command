@@ -127,6 +127,11 @@ compile make_aggregate make_aggregate.c -framework CoreAudio -framework CoreFoun
 compile launcher_main launcher_main.c
 # --- 6) .app olustur (PyInstaller + imzasiz = TCC mikrofon izni calisir) ---
 echo ""
+# mikrofon izin araci (AVFoundation) derle
+clang -fobjc-arc -o mic_permission mic_permission.m \
+      -framework Foundation -framework AVFoundation 2>/dev/null \
+  && echo "[OK] mic_permission derlendi" || echo "[!] mic_permission derlenemedi"
+
 echo "[*] Uygulama paketleniyor (PyInstaller)..."
 PYBIN="/Library/Developer/CommandLineTools/usr/bin/python3"
 [ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
