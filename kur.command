@@ -125,71 +125,42 @@ else
 fi
 compile make_aggregate make_aggregate.c -framework CoreAudio -framework CoreFoundation
 compile launcher_main launcher_main.c
-# --- 6) .app olustur (PyInstaller + imzasiz = TCC mikrofon izni calisir) ---
+# --- 6) .app olustur (kucuk C launcher + duz python dosyalari) ---
+# PyInstaller BIRAKILDI: 123MB bundle LaunchServices dogrulamasinda ~45sn
+# gecikiyordu. Kucuk launcher ile acilis aninda. Mikrofon izni de gerekmiyor
+# (Scarlett loopback girisi TCC mikrofon kapsaminda degil - sahada dogrulandi).
 echo ""
-# mikrofon izin araci (AVFoundation) derle
-clang -fobjc-arc -o mic_permission mic_permission.m \
+echo "[*] Launcher derleniyor..."
+clang -fobjc-arc -o vu_launcher vu_launcher.m \
       -framework Foundation -framework AVFoundation 2>/dev/null \
-  && echo "[OK] mic_permission derlendi" || echo "[!] mic_permission derlenemedi"
+  && echo "[OK] vu_launcher derlendi" || { echo "[!] launcher derlenemedi"; read -p "Enter..."; exit 1; }
 
-# --- Mikrofon izni: kucuk bundle ile HIZLI al ---
-# Ana .app buyuk oldugu icin LaunchServices dogrulamasi izin istemini ~45sn
-# geciktiriyor. Ayni bundle kimligiyle (com.mhrpii.vumeterlcd) kucuk bir
-# yardimci .app kullaninca istem 2 saniyede cikiyor ve izin DOGRU kimlige yazilir.
-echo ""
-echo "[*] Mikrofon izni isteniyor..."
-MICAPP="/Applications/VU Mikrofon Izni.app"
-rm -rf "$MICAPP"
-mkdir -p "$MICAPP/Contents/MacOS"
-cat > "$MICAPP/Contents/Info.plist" << 'PL'
+echo "[*] Uygulama olusturuluyor..."
+APP="/Applications/VU Meter LCD.app"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app"
+
+cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key><string>VU Meter LCD</string>
     <key>CFBundleIdentifier</key><string>com.mhrpii.vumeterlcd</string>
-    <key>CFBundleExecutable</key><string>mic_permission</string>
+    <key>CFBundleExecutable</key><string>vu_launcher</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>1.0</string>
     <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
     <key>LSUIElement</key><true/>
 </dict>
 </plist>
-PL
-cp mic_permission "$MICAPP/Contents/MacOS/" 2>/dev/null
-chmod +x "$MICAPP/Contents/MacOS/mic_permission" 2>/dev/null
-open -a "$MICAPP" 2>/dev/null
-echo "    (izin penceresi birazdan cikacak - 'Izin Ver' deyin)"
+PLIST
 
-echo "[*] Uygulama paketleniyor (PyInstaller)..."
-PYBIN="/Library/Developer/CommandLineTools/usr/bin/python3"
-[ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
-
-"$PYBIN" -m pip install --user --quiet pyinstaller sounddevice 2>/dev/null
-
-rm -rf build dist
-"$PYBIN" -m PyInstaller vumeter.spec --noconfirm >/dev/null 2>&1
-
-if [ ! -d "dist/VU Meter LCD.app" ]; then
-    echo "[!] PyInstaller paketi olusturulamadi."
-    read -p "Kapatmak icin Enter..."
-    exit 1
-fi
-
-# mikrofon izin araci bundle icine
-cp mic_permission "dist/VU Meter LCD.app/Contents/MacOS/" 2>/dev/null
-
-# KRITIK: imzayi KALDIR. Ad-hoc imza TCC mikrofon kaydini engelliyor;
-# imzasiz bundle kendi kimligiyle izin isteyebiliyor (sahada kanitlandi).
-codesign --remove-signature "dist/VU Meter LCD.app" 2>/dev/null
-codesign --remove-signature "dist/VU Meter LCD.app/Contents/MacOS/VU Meter LCD" 2>/dev/null
-
-# menu cubugu uygulamasi (Dock'ta gorunmesin)
-plutil -replace LSUIElement -bool true "dist/VU Meter LCD.app/Contents/Info.plist"
-
-APP="/Applications/VU Meter LCD.app"
-rm -rf "$APP"
-ditto "dist/VU Meter LCD.app" "$APP"
+cp vu_launcher "$APP/Contents/MacOS/"
+chmod +x "$APP/Contents/MacOS/vu_launcher"
+cp *.py                                  "$APP/Contents/Resources/app/" 2>/dev/null
+cp *.png                                 "$APP/Contents/Resources/app/" 2>/dev/null
+cp smc_read gpu_read disk_read ipg_read mic_permission "$APP/Contents/Resources/app/" 2>/dev/null
 echo "[OK] Uygulama kuruldu: $APP"
 
 
