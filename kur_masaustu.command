@@ -67,48 +67,48 @@ done
 
 # --- 5) Uygulama dosyalari ---
 APP="/Applications/VU Meter Masaustu.app"
-PROJDIR_DESK="$(pwd)"
-echo "[*] Uygulama (.app) olusturuluyor: $APP"
+
+# ikon uret
+if [ ! -f vu_icon.icns ] && [ -f app_icon_1024.png ]; then
+    rm -rf /tmp/vu.iconset; mkdir -p /tmp/vu.iconset
+    for s in 16 32 128 256 512; do
+        sips -z $s $s app_icon_1024.png --out "/tmp/vu.iconset/icon_${s}x${s}.png" >/dev/null 2>&1
+        d=$((s*2))
+        sips -z $d $d app_icon_1024.png --out "/tmp/vu.iconset/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+    done
+    iconutil -c icns /tmp/vu.iconset -o vu_icon.icns 2>/dev/null && echo "[OK] ikon uretildi"
+fi
+
+echo "[*] Launcher derleniyor..."
+clang -fobjc-arc -o vu_launcher_desktop vu_launcher_desktop.m \
+      -framework Foundation -framework AVFoundation 2>/dev/null \
+  && echo "[OK] launcher derlendi" || { echo "[!] launcher derlenemedi"; read -p "Enter..."; exit 1; }
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app"
 
-# gereken dosyalar
-FILES="vumeter_mac_desktop.py control_window_desktop.py sysmon_window.py sysmon_mac.py smc_read gpu_read disk_read ipg_read smc_read.c gpu_read.c disk_read.c ipg_read.c vu_bg.png vu_bg2.png vu_bg3.png"
-for f in $FILES; do
-    [ -e "$f" ] && cp "$f" "$APP/Contents/Resources/app/" 2>/dev/null
-done
-echo "[OK] dosyalar kopyalandi"
-
-# --- 6) Info.plist ---
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key><string>VU Meter Masaustu</string>
-    <key>CFBundleDisplayName</key><string>VU Meter Masaüstü</string>
-    <key>CFBundleIdentifier</key><string>com.vumeter.desktop</string>
-    <key>CFBundleVersion</key><string>1.0</string>
+    <key>CFBundleIdentifier</key><string>com.mhrpii.vumeterdesktop</string>
+    <key>CFBundleExecutable</key><string>vu_launcher_desktop</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleExecutable</key><string>launcher</string>
-    <key>CFBundleIconFile</key><string>appicon</string>
-    <key>NSMicrophoneUsageDescription</key><string>Ses gorselleştirme icin sistem sesini dinler.</string>
-    <key>NSHighResolutionCapable</key><true/>
+    <key>CFBundleVersion</key><string>1.0</string>
+    <key>CFBundleIconFile</key><string>vu_icon</string>
+    <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
 </dict>
 </plist>
 PLIST
 
-# --- 7) Launcher ---
-cat > "$APP/Contents/MacOS/launcher" << SH
-#!/bin/bash
-osascript <<OSA
-tell application "Terminal"
-    set w to do script "pkill -f vumeter_mac_desktop; pkill -f 'cava -p'; sleep 0.5; cd '/Applications/VU Meter Masaustu.app/Contents/Resources/app' && python3 -u vumeter_mac_desktop.py"
-    set visible of front window to false
-end tell
-OSA
-SH
-chmod +x "$APP/Contents/MacOS/launcher"
+cp vu_icon.icns "$APP/Contents/Resources/" 2>/dev/null
+cp vu_launcher_desktop "$APP/Contents/MacOS/"
+chmod +x "$APP/Contents/MacOS/vu_launcher_desktop"
+cp *.py                                  "$APP/Contents/Resources/app/" 2>/dev/null
+cp *.png                                 "$APP/Contents/Resources/app/" 2>/dev/null
+cp smc_read gpu_read disk_read ipg_read  "$APP/Contents/Resources/app/" 2>/dev/null
 
 # --- 8) Ikon (camgobegi tonlu - LCD'den ayirt edilsin) ---
 if [ -f "app_icon_1024.png" ]; then
