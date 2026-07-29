@@ -36,7 +36,8 @@ int main(int argc, char **argv) {
         // CAVA IZIN ISITMA: cava'yi once .app'in DOGRUDAN cocugu olarak calistir.
         // TCC izni surec agacinda miras kalir; python'un subprocess ile actigi
         // cava zincirin ucunda kalinca izinsiz oluyordu.
-        system("/usr/local/bin/cava -p \"$HOME/.config/cava/config_native\" >/dev/null 2>&1 & sleep 2; pkill -f 'cava -p' 2>/dev/null");
+        // KALDIRILDI: LCD config'iyle cava isitma + toplu pkill.
+        // LCD'nin cava'sini da olduruyordu -> masaustu acilirken LCD doniyordu.
 
         // CIFT KOPYA KORUMASI: eski surecler USB panele ayni anda yazinca
         // panel kilitlenir (marka ekrani). Once temizle.
