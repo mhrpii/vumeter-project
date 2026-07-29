@@ -151,11 +151,14 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleVersion</key><string>1.0</string>
     <key>NSMicrophoneUsageDescription</key><string>VU Meter, ses kartindan gelen sesi gorsellestirmek icin ses girisini kullanir.</string>
+    <key>CFBundleIconFile</key><string>vu_icon</string>
     <key>LSUIElement</key><true/>
 </dict>
 </plist>
 PLIST
 
+mkdir -p "$APP/Contents/Resources"
+cp vu_icon.icns "$APP/Contents/Resources/" 2>/dev/null
 cp vu_launcher "$APP/Contents/MacOS/"
 chmod +x "$APP/Contents/MacOS/vu_launcher"
 cp *.py                                  "$APP/Contents/Resources/app/" 2>/dev/null
