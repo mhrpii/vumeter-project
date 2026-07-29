@@ -596,6 +596,26 @@ def draw_idle_screen(surf, t):
     surf.blit(ts, (W // 2 - ts.get_width() // 2, H // 2 - ts.get_height() // 2))
 
 
+_GRAD_CACHE = {}
+
+def _grad_cache_get(theme_name, bar_w, max_h):
+    """Bar gradyanini bir kez uret, sakla. Orijinal dongunun birebir ayni
+    ciktisini verir: y_offset=0 en altta, ratio = y_offset / max_h."""
+    key = (theme_name, bar_w, max_h)
+    surf = _GRAD_CACHE.get(key)
+    if surf is not None:
+        return surf
+    surf = pygame.Surface((bar_w, max_h))
+    for y_off in range(0, max_h, 4):
+        ratio = y_off / max_h
+        seg = gradient_color(theme_name, ratio)
+        surf.fill(seg, (0, max_h - y_off - 4, bar_w, 4))
+    if len(_GRAD_CACHE) > 24:
+        _GRAD_CACHE.clear()
+    _GRAD_CACHE[key] = surf
+    return surf
+
+
 def draw_spectrum(W_CUR, H_CUR, stereo_bars, theme_name, cava_bars):
     # Ust yari: iki gercek VU fotografi
     disp_w = max(220, min(int(W_CUR * 0.30), 460))
@@ -647,7 +667,7 @@ def draw_spectrum(W_CUR, H_CUR, stereo_bars, theme_name, cava_bars):
         else:
             if peak_timers[i] > 0: peak_timers[i] -= 1
             else:
-                peak_bars[i] -= 3
+                peak_bars[i] -= 1.5
                 if peak_bars[i] < 0: peak_bars[i] = 0
 
         if i < HALF_BARS:
@@ -656,10 +676,14 @@ def draw_spectrum(W_CUR, H_CUR, stereo_bars, theme_name, cava_bars):
             x_pos = right_start + (i - HALF_BARS) * (bar_w + 1)
 
         if h > 2:
-            for y_offset in range(0, h, 4):
-                ratio = y_offset / BARS_MAX_HEIGHT
-                seg = gradient_color(theme_name, ratio)
-                pygame.draw.rect(screen, seg, (x_pos, BARS_BOTTOM_Y - y_offset - 4, bar_w, 4))
+            # ONBELLEKLI GRADYAN: gradyan BARS_MAX_HEIGHT'e gore bir kez uretilir,
+            # barin yuksekligi kadari ALTTAN alinir -> orijinal ile birebir ayni
+            # gorunum (renk oranlari BARS_MAX_HEIGHT'e gore hesaplaniyordu).
+            # Kare basina ~20.000 rect cagrisi yerine 204 blit.
+            _g = _grad_cache_get(theme_name, bar_w, BARS_MAX_HEIGHT)
+            _hh = min(h, BARS_MAX_HEIGHT)
+            screen.blit(_g, (x_pos, BARS_BOTTOM_Y - _hh),
+                        (0, BARS_MAX_HEIGHT - _hh, bar_w, _hh))
 
         peak_h = int(peak_bars[i])
         if peak_h > 2:
@@ -729,7 +753,7 @@ def draw_spectrum_bars(W_CUR, H_CUR, stereo_bars, theme_name):
         else:
             if peak_timers[i] > 0: peak_timers[i] -= 1
             else:
-                peak_bars[i] -= 3
+                peak_bars[i] -= 1.5
                 if peak_bars[i] < 0: peak_bars[i] = 0
 
         if i < HALF_BARS:
