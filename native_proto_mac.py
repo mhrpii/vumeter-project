@@ -2046,18 +2046,6 @@ if __name__ == "__main__":
     # PyInstaller (donmus .app) icin ZORUNLU: alt surecler ana programi
     # yeniden calistirmasin diye. Bu satir olmadan sonsuz kopya acilir.
     mp.freeze_support()
-    # MIKROFON IZNI: python'un KENDISI istesin. TCC izni, istemi acan ikilinin
-    # imzasina (csreq) baglaniyor; /usr/bin/python3 Apple imzali ve sabit oldugu
-    # icin izin kalici ve islevsel olur. (C araci ile alinan izin sadece o araca
-    # ait kaliyordu, cava/python kullanamiyordu.)
-    try:
-        import subprocess as _spm
-        _mp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mic_permission")
-        if os.path.exists(_mp):
-            _r = _spm.run([_mp], capture_output=True, text=True, timeout=180)
-            print(f"[ses] mikrofon izni: {_r.stdout.strip()}")
-    except Exception as _ep:
-        print(f"[ses] izin araci: {type(_ep).__name__}")
     try:
         mp.set_start_method("spawn", force=True)
     except RuntimeError:

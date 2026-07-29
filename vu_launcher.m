@@ -28,6 +28,9 @@ static void izin_al(void) {
 
 int main(int argc, char **argv) {
     @autoreleasepool {
+        // Mikrofon izni: kaldirilinca ses gelmedi -> gerekli. Zaten izin varsa
+        // istem gostermez (authorizationStatus kontrolu ile), sadece ilk
+        // kurulumda bir kez sorar.
         izin_al();
 
         // CAVA IZIN ISITMA: cava'yi once .app'in DOGRUDAN cocugu olarak calistir.

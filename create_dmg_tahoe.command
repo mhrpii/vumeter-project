@@ -4,7 +4,8 @@
 #
 # Tahoe farklari:
 #   - kur_sarmalayici.command dahil (mikrofon izni icin Terminal sarmalayici)
-#   - mic_permission.m (AVFoundation mikrofon izni) dahil
+#   - vu_launcher.m (kucuk C launcher - PyInstaller yerine)
+#   - mic_permission.m (AVFoundation mikrofon izni araci)
 #   - aggregate/BlackHole yok; Scarlett + channels=1 dogrudan calisir
 #
 cd "$(dirname "$0")" || exit 1
@@ -22,11 +23,11 @@ for f in native_proto_mac.py sysmon_mac.py control_window.py trcc_direct.py; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
-for f in smc_read.c gpu_read.c disk_read.c ipg_read.c mic_permission.m; do
+for f in smc_read.c gpu_read.c disk_read.c ipg_read.c mic_permission.m vu_launcher.m; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
-for f in kur.command README_MAC.md app_icon_1024.png vumeter.spec; do
+for f in kur.command README_MAC.md app_icon_1024.png; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
