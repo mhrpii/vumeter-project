@@ -40,7 +40,10 @@ int main(int argc, char **argv) {
 
         // CIFT KOPYA KORUMASI: eski surecler USB panele ayni anda yazinca
         // panel kilitlenir (marka ekrani). Once temizle.
-        system("pkill -f vumeter_mac_desktop 2>/dev/null; pkill -f 'cava -p' 2>/dev/null");
+        // NOT: cava'yi OLDURMUYORUZ - LCD surumu ayni anda calisiyorsa onun
+        // cava'sini da oldururdu (LCD birkac saniye donuyordu). Sadece kendi
+        // eski kopyalarimizi temizliyoruz.
+        system("pkill -f vumeter_mac_desktop 2>/dev/null");
         sleep(2);
 
         char exe[PATH_MAX]; uint32_t sz = sizeof(exe);

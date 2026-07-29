@@ -210,7 +210,10 @@ def _detect_mac_audio_source():
 
 MAC_AUDIO_SOURCE = _detect_mac_audio_source()
 CAVA_SOURCE_FALLBACK = MAC_AUDIO_SOURCE
-CAVA_CONFIG = os.path.expanduser("~/.config/cava/config_native")
+# AYRI CONFIG: LCD surumu config_native kullaniyor. Ayni dosyayi paylasinca
+# masaustu acilirken dosyayi yeniden yaziyor, LCD'nin cava'si bozulup yeniden
+# basliyordu (LCD birkac saniye donuyordu). Ayri dosya = cakisma yok.
+CAVA_CONFIG = os.path.expanduser("~/.config/cava/config_desktop")
 
 
 def _find_cava_bin():
