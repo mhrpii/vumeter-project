@@ -14,7 +14,7 @@ for f in vumeter_mac_desktop.py sysmon_mac.py sysmon_window.py control_window_de
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
-for f in smc_read.c gpu_read.c disk_read.c ipg_read.c; do
+for f in smc_read.c gpu_read.c disk_read.c ipg_read.c vu_launcher_desktop.m; do
     [ -f "$f" ] && cp "$f" "$STAGING/" && echo "    + $f"
 done
 
