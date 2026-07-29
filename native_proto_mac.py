@@ -1606,9 +1606,22 @@ def sender_process_main(shm_name, frame_counter, w, h, brightness=None, usb_warn
             else:
                 time.sleep(0.002)
     finally:
-        shm.close()
+        # ONCE USB'yi kapat: shm.close() "cannot close exported pointers exist"
+        # hatasi verirse dev.close() hic calismiyordu -> USB acik kaliyor,
+        # sonraki acilista "Access denied" (her seferinde fiziksel cikar-tak).
         try:
             dev.close()
+        except Exception:
+            pass
+        try:
+            _arr = getattr(sender_process_main, "_arr", None)
+            if _arr is not None:
+                del _arr
+                sender_process_main._arr = None
+        except Exception:
+            pass
+        try:
+            shm.close()
         except Exception:
             pass
 
