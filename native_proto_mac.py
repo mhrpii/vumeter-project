@@ -1318,12 +1318,12 @@ class CavaReader:
                             self._zero_since = time.time()
                         else:
                             elapsed = time.time() - self._zero_since
-                            # 1.5sn: kaynak degistiyse (profil) yenile
-                            if elapsed > 1.5:
-                                cur = _find_scarlett_monitor()
-                                if cur != self._active_source:
-                                    self._restart_cava()
-                                    continue
+                            # 1.5sn kaynak-degisimi kontrolu DEVRE DISI (Mac):
+                            # Linux'ta PipeWire profil degisimi icindi. Mac'te
+                            # baska bir ses uygulamasi (ornek: masaustu surumu)
+                            # acilinca CoreAudio aygit listesi anlik degisiyor,
+                            # bu kural cava'yi gereksiz yeniden baslatip LCD'yi
+                            # birkac saniye donduruyordu.
                             # Mac DUZELTMESI: sessizlik ARIZA DEGIL (muzik durmus/
                             # sakin pasaj olabilir - idle ekrani bunun icin var).
                             # Eski 5sn kurali cava'yi olduruyordu -> restart+warmup
