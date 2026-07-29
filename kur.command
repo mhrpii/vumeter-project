@@ -130,6 +130,17 @@ compile launcher_main launcher_main.c
 # gecikiyordu. Kucuk launcher ile acilis aninda. Mikrofon izni de gerekmiyor
 # (Scarlett loopback girisi TCC mikrofon kapsaminda degil - sahada dogrulandi).
 echo ""
+# ikon uret (app_icon_1024.png -> vu_icon.icns)
+if [ ! -f vu_icon.icns ] && [ -f app_icon_1024.png ]; then
+    rm -rf /tmp/vu.iconset; mkdir -p /tmp/vu.iconset
+    for s in 16 32 128 256 512; do
+        sips -z $s $s app_icon_1024.png --out "/tmp/vu.iconset/icon_${s}x${s}.png" >/dev/null 2>&1
+        d=$((s*2))
+        sips -z $d $d app_icon_1024.png --out "/tmp/vu.iconset/icon_${s}x${s}@2x.png" >/dev/null 2>&1
+    done
+    iconutil -c icns /tmp/vu.iconset -o vu_icon.icns 2>/dev/null && echo "[OK] ikon uretildi"
+fi
+
 echo "[*] Launcher derleniyor..."
 clang -fobjc-arc -o vu_launcher vu_launcher.m \
       -framework Foundation -framework AVFoundation 2>/dev/null \
