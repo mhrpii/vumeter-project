@@ -84,7 +84,8 @@ _CARD_DESC = {
     "CPU%": "İşlemci kullanımı", "GPU%": "GPU kullanımı",
     "RAM": "Bellek kullanımı", "VRAM": "GPU bellek dolu",
     "GHz": "CPU hızı", "C-W": "CPU gücü", "G-W": "GPU gücü",
-    "CFan": "CPU fan devri", "Pump": "Pompa devri", "GFan": "GPU fan devri",
+    "CFan": "CPU fan devri", "Pump": "Pompa 1 devri", "Pmp2": "Pompa 2 devri",
+    "GFan": "GPU fan devri",
     "İndir": "Ağ indirme", "Yükle": "Ağ yükleme",
 }
 
@@ -377,6 +378,7 @@ def draw(screen, d):
     frq = d.get("cpu_freq")
     cpu_p = d.get("cpu_power"); gpu_p = d.get("gpu_power")
     cfan = d.get("fan_cpu"); pump = d.get("fan_pump")
+    pump2 = d.get("fan_pump2")
     gfan = d.get("gpu_fan_rpm")
     sfans = [d.get(f"fan_sys{i}") for i in range(1, 7)]
     nd = d.get("net_down"); nu = d.get("net_up")
@@ -421,6 +423,7 @@ def draw(screen, d):
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W", (gpu_p/350.0)  if gpu_p else 0, GREEN),
         ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm", (cfan/3000.0) if cfan else 0, GREEN),
         ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm", (pump/3000.0) if pump else 0, GREEN),
+        ("Pmp2", f"{pump2:.0f}"  if pump2 else "0",              "rpm", (pump2/3000.0) if pump2 else 0, GREEN),
         ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm", (gfan/3000.0) if gfan else 0, GREEN),
     ] + [
         (f"S{i+1}", f"{sf:.0f}" if sf else "0", "rpm", (sf/3000.0) if sf else 0, GREEN)

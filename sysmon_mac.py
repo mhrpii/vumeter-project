@@ -63,7 +63,8 @@ _SMC_KEYS = [
     "PCPT",  # CPU toplam guc (W)
     "PCPC",  # CPU core guc (W)
     "VC0C",  # CPU voltaj (V)
-    "F0Ac", "F1Ac", "F2Ac", "F3Ac", "F4Ac",  # 5 fan
+    "F0Ac", "F1Ac", "F2Ac", "F3Ac", "F4Ac",
+    "F5Ac", "F6Ac", "F7Ac", "F8Ac",  # 9 fan (SMCSuperIO NCT6687D)
 ]
 
 
@@ -330,8 +331,12 @@ class SysMonitor:
             d["cpu_power"] = smc.get("PCPT")        # CPU toplam guc (W)
             d["cpu_voltage"] = smc.get("VC0C")      # CPU voltaj (V) -> VCore
 
-            # --- fanlar (5 fan: F0-F4) ---
-            fan_keys_out = ["fan_cpu", "fan_pump", "fan_sys1", "fan_sys2", "fan_sys3"]
+            # --- fanlar (9 fan: F0-F8) ---
+            # SMCSuperIO NCT6687D.plist kanal sirasi:
+            #   F0 CPUFAN, F1 PUMPFAN1, F2 PUMPFAN2, F3-F8 SYSFAN1-6
+            fan_keys_out = ["fan_cpu", "fan_pump", "fan_pump2",
+                            "fan_sys1", "fan_sys2", "fan_sys3",
+                            "fan_sys4", "fan_sys5", "fan_sys6"]
             for i, fk in enumerate(fan_keys_out):
                 v = smc.get(f"F{i}Ac")
                 d[fk] = int(v) if v is not None else None
