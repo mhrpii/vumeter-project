@@ -742,7 +742,7 @@ def draw_sysmon(surf, fps):
     ram = d.get("ram_pct"); frq = d.get("cpu_freq")
     cpu_p = d.get("cpu_power"); gpu_p = d.get("gpu_power")
     vram_u = d.get("gpu_vram_used"); vram_t = d.get("gpu_vram_total")
-    cfan = d.get("fan_cpu"); pump = d.get("fan_pump"); gfan = d.get("gpu_fan_rpm")
+    cfan = d.get("fan_cpu"); pump = d.get("fan_pump"); pump2 = d.get("fan_pump2"); gfan = d.get("gpu_fan_rpm")
     s1 = d.get("fan_sys1"); s2 = d.get("fan_sys2"); s3 = d.get("fan_sys3")
     s4 = d.get("fan_sys4"); s5 = d.get("fan_sys5"); s6 = d.get("fan_sys6")
     nd = d.get("net_down"); nu = d.get("net_up")
@@ -766,10 +766,11 @@ def draw_sysmon(surf, fps):
         ("VCore", f"{vcore:.2f}"       if vcore else "--", "V",   (vcore/1.5)   if vcore else 0, GREEN),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C",  (pch/90.0)     if pch else 0,   col(pch)),
         ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C",  (mbsys/90.0)   if mbsys else 0, col(mbsys)),
-        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "",   (cfan/3000.0)  if cfan else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "",   (pump/3000.0)  if pump else 0, GREEN),
-        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "",   (gfan/3000.0)  if gfan else 0, GREEN),
-        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "",   (s1/3000.0)    if s1 else 0, GREEN),
+        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm",   (cfan/3000.0)  if cfan else 0, GREEN),
+        ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm",   (pump/3000.0)  if pump else 0, GREEN),
+        ("Pump2", f"{pump2:.0f}" if pump2 else "0",             "rpm",   (pump2/3000.0) if pump2 else 0, GREEN),
+        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm",   (gfan/3000.0)  if gfan else 0, GREEN),
+        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "rpm",   (s1/3000.0)    if s1 else 0, GREEN),
         ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",   (frq/5700.0)   if frq else 0, GREEN),
     ]
     # SATIR 2 (13): kullanim + guc + pasif fanlar + ag
@@ -780,11 +781,11 @@ def draw_sysmon(surf, fps):
         ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W",  (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W",  (gpu_p/350.0)  if gpu_p else 0, GREEN),
-        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "",   (s2/3000.0)    if s2 else 0, GREEN),
-        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "",   (s3/3000.0)    if s3 else 0, GREEN),
-        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "",   (s4/3000.0)    if s4 else 0, GREEN),
-        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "",   (s5/3000.0)    if s5 else 0, GREEN),
-        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "",   (s6/3000.0)    if s6 else 0, GREEN),
+        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "rpm",   (s2/3000.0)    if s2 else 0, GREEN),
+        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "rpm",   (s3/3000.0)    if s3 else 0, GREEN),
+        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "rpm",   (s4/3000.0)    if s4 else 0, GREEN),
+        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "rpm",   (s5/3000.0)    if s5 else 0, GREEN),
+        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "rpm",   (s6/3000.0)    if s6 else 0, GREEN),
         ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
         ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
     ]
