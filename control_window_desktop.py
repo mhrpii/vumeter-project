@@ -132,6 +132,39 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     root.addWidget(smon_lbl)
     root.addLayout(root_smon)
     bottom.addWidget(smon_b)
+    # --- GPU Fan kontrol paneli (ayri proje: navi21-fan) ---
+    # Kurulu degilse dugme hic gosterilmez.
+    import os as _os2
+    _FANCTL_PATHS = [
+        "/usr/local/share/navi21fan/fanctl.py",
+    ]
+    _fanctl = next((p for p in _FANCTL_PATHS if _os2.path.exists(p)), None)
+
+    if _fanctl:
+        def _open_fan_panel():
+            fw = getattr(w, "_fan_win", None)
+            if fw is not None:
+                try:
+                    fw.show(); fw.raise_(); fw.activateWindow()
+                    return
+                except RuntimeError:
+                    w._fan_win = None
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("fanctl", _fanctl)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                w._fan_win = mod.Panel()
+                w._fan_win.show()
+            except Exception as e:
+                print("fan paneli ice aktarilamadi, ayri surec:", e)
+                import subprocess, sys as _sys2
+                subprocess.Popen([_sys2.executable, _fanctl])
+
+        fan_btn = QPushButton("GPU FAN KONTROL")
+        fan_btn.clicked.connect(_open_fan_panel)
+        root.addWidget(fan_btn)
+
     quit_b = QPushButton("Çıkış"); quit_b.setObjectName("quit")
     quit_b.clicked.connect(lambda: on_quit())
     bottom.addWidget(quit_b)
