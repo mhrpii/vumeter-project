@@ -373,7 +373,24 @@ class SysMonitor:
                 if used is not None and free is not None:
                     d["gpu_vram_total"] = (used + free) / 1024.0  # GB
                 # GPU fan (varsa)
-                d["gpu_fan_rpm"] = int(g["fan"]) if g.get("fan") else None
+                # GPU FANI: AMD surucusunun IOKit istatistigi ~1 dakika donuk kaliyor.
+                # navi21_fand servisi DirectHW ile register'dan anlik okuyup
+                # /tmp/navi21fan.json'a yaziyor -> once oradan dene (yoksa eski yol).
+                _grpm = None
+                try:
+                    import json as _js, time as _tm
+                    with open('/tmp/navi21fan.json', 'r') as _f:
+                        _st = _js.load(_f)
+                    # bayat veri kullanma: servis durmussa eski degeri gosterme
+                    if _tm.time() - float(_st.get('ts', 0)) < 30:
+                        _r = _st.get('rpm')
+                        if _r:
+                            _grpm = int(_r)
+                except Exception:
+                    pass
+                if _grpm is None:
+                    _grpm = int(g['fan']) if g.get('fan') else None
+                d["gpu_fan_rpm"] = _grpm
                 # GPU memory clock (MHz) -> GBellek gauge
                 d["gpu_mem_clock"] = g.get("memclock")
                 # GPU core clock (MHz) -> GClock gauge (GEdge yerine)
