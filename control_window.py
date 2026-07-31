@@ -28,6 +28,8 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     }}
     QPushButton:hover {{ border: 1px solid {GREEN}; }}
     QPushButton:checked {{ background: {GREEN_D}; border: 2px solid {GREEN}; color: {GREEN}; font-weight: bold; }}
+    QPushButton#fan {{ background: {PANEL}; border: 1px solid {BORDER}; color: {GREEN}; font-weight: bold; }}
+    QPushButton#fan:hover {{ border: 1px solid {GREEN}; background: {GREEN_D}; }}
     QPushButton#quit {{ background: #2a1616; border: 1px solid #5a2a2a; color: #e88; }}
     QPushButton#quit:hover {{ border: 1px solid #e55; }}
     QSlider::groove:horizontal {{ height: 6px; background: {BORDER}; border-radius: 3px; }}
@@ -288,9 +290,48 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     auto_cb.toggled.connect(_on_auto)
     root.addWidget(auto_cb)
 
+    # --- GPU Fan kontrol paneli (ayri proje: navi21-fan) ---
+    # Kurulu degilse dugme hic gosterilmez.
+    _FANCTL_PATHS = [
+        "/usr/local/share/navi21fan/fanctl.py",
+    ]
+    _fanctl = next((p for p in _FANCTL_PATHS if _os.path.exists(p)), None)
+
+    if _fanctl:
+        def _open_fan_panel():
+            # zaten aciksa one getir
+            fw = getattr(w, "_fan_win", None)
+            if fw is not None:
+                try:
+                    fw.show(); fw.raise_(); fw.activateWindow()
+                    return
+                except RuntimeError:
+                    w._fan_win = None            # pencere yok edilmis
+            try:
+                # ayni surecte ac: terminal penceresi olmaz, aninda gelir
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("fanctl", _fanctl)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                w._fan_win = mod.Panel()
+                w._fan_win.show()
+            except Exception as e:
+                # ice aktarma basarisiz olursa ayri surec olarak baslat
+                print("fan paneli ice aktarilamadi, ayri surec:", e)
+                import subprocess, sys as _sys
+                subprocess.Popen([_sys.executable, _fanctl])
+
+        fan_btn = QPushButton("GPU FAN KONTROL"); fan_btn.setObjectName("fan")
+        fan_btn.clicked.connect(_open_fan_panel)
+        root.addWidget(fan_btn)
+
     # --- Cikis ---
     quit_btn = QPushButton("Çıkış"); quit_btn.setObjectName("quit")
     def do_quit():
+        fw = getattr(w, "_fan_win", None)
+        if fw is not None:
+            try: fw.close()
+            except Exception: pass
         state["running"] = False
         try:
             from PyQt5.QtWidgets import QApplication

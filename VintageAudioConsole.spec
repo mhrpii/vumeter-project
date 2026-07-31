@@ -102,7 +102,7 @@ coll = COLLECT(
 
 app = BUNDLE(
     coll,
-    name="VintageAudioConsole.app",
+    name="VU Meter LCD.app",
     icon="AppIcon.icns",
     bundle_identifier="com.local.vintageaudioconsole",
     info_plist={

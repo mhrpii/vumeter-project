@@ -746,6 +746,7 @@ def draw_sysmon(surf, fps):
     s1 = d.get("fan_sys1"); s2 = d.get("fan_sys2"); s3 = d.get("fan_sys3")
     s4 = d.get("fan_sys4"); s5 = d.get("fan_sys5"); s6 = d.get("fan_sys6")
     nd = d.get("net_down"); nu = d.get("net_up")
+    ram_gb = d.get("ram_used_gb"); ram_tot = d.get("ram_total_gb")
 
     def net_fmt(mbps):
         if mbps is None: return ("--", "kB/s", 0)
@@ -756,38 +757,39 @@ def draw_sysmon(surf, fps):
 
     def col(t): return temp_color(t)
     vram_frac = (vram_u/vram_t) if (vram_u and vram_t) else 0
-    # SATIR 1 (13): sicakliklar + AKTIF fanlar (birbiriyle ilgili: isi + sogutma)
+    # SATIR 1 (14): sicakliklar + kullanim + fan blogu (sol yarim)
     bars_top = [
         ("CPU",  f"{cpu_t:.0f}"  if cpu_t is not None else "--", "C",  (cpu_t/100.0)  if cpu_t else 0, col(cpu_t)),
         ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C",  (cores/100.0)  if cores else 0, col(cores)),
         ("GPU",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C",  (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
-        ("GClock",f"{gclk/1000:.1f}" if gclk else "--", "GHz", (gclk/3000.0) if gclk else 0, GREEN),
-        ("GBellek", f"{gmhz/1000:.1f}" if gmhz else "--", "GHz", (gmhz/3000.0) if gmhz else 0, GREEN),
-        ("VCore", f"{vcore:.2f}"       if vcore else "--", "V",   (vcore/1.5)   if vcore else 0, GREEN),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C",  (pch/90.0)     if pch else 0,   col(pch)),
         ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C",  (mbsys/90.0)   if mbsys else 0, col(mbsys)),
+        ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%",  (use/100.0)    if use is not None else 0, GREEN),
+        ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%",  (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
+        ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%",  (ram/100.0)    if ram is not None else 0, GREEN),
+        ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
         ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm",   (cfan/3000.0)  if cfan else 0, GREEN),
         ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm",   (pump/3000.0)  if pump else 0, GREEN),
         ("Pump2", f"{pump2:.0f}" if pump2 else "0",             "rpm",   (pump2/3000.0) if pump2 else 0, GREEN),
         ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm",   (gfan/3000.0)  if gfan else 0, GREEN),
         ("S1",   f"{s1:.0f}"     if s1 else "0",                 "rpm",   (s1/3000.0)    if s1 else 0, GREEN),
-        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",   (frq/5700.0)   if frq else 0, GREEN),
     ]
-    # SATIR 2 (13): kullanim + guc + pasif fanlar + ag
+    # SATIR 2 (14): saat/voltaj + guc + RAM(GB) + ag + fan blogu (sag yarim)
     bars_bot = [
-        ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%",  (use/100.0)    if use is not None else 0, GREEN),
-        ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%",  (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
-        ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%",  (ram/100.0)    if ram is not None else 0, GREEN),
-        ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
+        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "GHz",   (frq/5700.0)   if frq else 0, GREEN),
+        ("GClock",f"{gclk/1000:.1f}" if gclk else "--", "GHz", (gclk/3000.0) if gclk else 0, GREEN),
+        ("GBellek", f"{gmhz/1000:.1f}" if gmhz else "--", "GHz", (gmhz/3000.0) if gmhz else 0, GREEN),
+        ("VCore", f"{vcore:.2f}"       if vcore else "--", "V",   (vcore/1.5)   if vcore else 0, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W",  (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W",  (gpu_p/350.0)  if gpu_p else 0, GREEN),
+        ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
+        ("RAM",  f"{ram_gb:.1f}" if ram_gb is not None else "--","G",  (ram_gb/ram_tot) if (ram_gb and ram_tot) else 0, GREEN),
+        ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
         ("S2",   f"{s2:.0f}"     if s2 else "0",                 "rpm",   (s2/3000.0)    if s2 else 0, GREEN),
         ("S3",   f"{s3:.0f}"     if s3 else "0",                 "rpm",   (s3/3000.0)    if s3 else 0, GREEN),
         ("S4",   f"{s4:.0f}"     if s4 else "0",                 "rpm",   (s4/3000.0)    if s4 else 0, GREEN),
         ("S5",   f"{s5:.0f}"     if s5 else "0",                 "rpm",   (s5/3000.0)    if s5 else 0, GREEN),
         ("S6",   f"{s6:.0f}"     if s6 else "0",                 "rpm",   (s6/3000.0)    if s6 else 0, GREEN),
-        ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
-        ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
     ]
     margin = 16
     vfont = _sm_font(30); ufont = _sm_font(15); lfont = _sm_font(17)

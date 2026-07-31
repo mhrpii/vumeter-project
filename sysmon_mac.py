@@ -345,7 +345,10 @@ class SysMonitor:
             if psutil is not None:
                 try:
                     d["cpu_usage"] = psutil.cpu_percent(interval=None)
-                    d["ram_pct"] = psutil.virtual_memory().percent
+                    _vm = psutil.virtual_memory()
+                    d["ram_pct"] = _vm.percent
+                    d["ram_used_gb"] = (_vm.total - _vm.available) / (1024.0**3)
+                    d["ram_total_gb"] = _vm.total / (1024.0**3)
                     fq = psutil.cpu_freq()
                     d["cpu_freq"] = int(fq.current) if fq else None
                 except Exception:

@@ -27,7 +27,7 @@ echo "==> Eski build/dist klasorleri temizleniyor..."
 rm -rf build dist
 
 echo "==> PyInstaller calistiriliyor..."
-pyinstaller VintageAudioConsole.spec
+python3 -m PyInstaller VintageAudioConsole.spec
 
 echo ""
 echo "=================================================="
