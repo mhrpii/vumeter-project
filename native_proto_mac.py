@@ -687,7 +687,7 @@ def draw_sysmon_cores(surf, ipg):
         # kutu
         pygame.draw.rect(surf, col, (x, y, cell_w, cell_h), border_radius=8)
         # cekirdek no (sol ust, kucuk)
-        nf = _sm_font(13)
+        nf = _sm_font(max(13, int(cell_h * 0.34 * 0.56)))
         ns = nf.render(f"C{cnum}", True, (255, 255, 255) if temp > 55 else (200, 210, 220))
         surf.blit(ns, (x + 4, y + 3))
         if temp > 0:
@@ -697,7 +697,8 @@ def draw_sysmon_cores(surf, ipg):
             tsr = tf2.render(f"{temp:.0f}°", True, tcol)
             surf.blit(tsr, (x + cell_w//2 - tsr.get_width()//2, y + int(cell_h*0.28)))
             # frekans (alt, kucuk)
-            ff = _sm_font(13)
+            # GHz fontu sicaklik fontuna oranli: hep ondan KUCUK kalir
+            ff = _sm_font(max(13, int(cell_h * 0.34 * 0.62)))
             fs = ff.render(f"{freq/1000:.1f}G", True, tcol)
             surf.blit(fs, (x + cell_w//2 - fs.get_width()//2, y + int(cell_h*0.68)))
         else:
