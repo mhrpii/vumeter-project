@@ -7,6 +7,8 @@ import pygame
 import math
 from collections import deque as _deque
 
+# Kasa yerlesimine gore sistem fani etiketleri (fan_sys1..fan_sys6)
+SYSFAN_ETIKET = ["A-Ar", "A-Or", "A-Ön", "Ü-Ön", "Ü-Ar", "Egz"]
 # Platforma gore sensor kaynagi:
 #   Windows -> sysmon_win (LibreHardwareMonitor DLL, yonetici gerekir)
 #   Linux   -> sysmon     (hwmon)
@@ -84,8 +86,10 @@ _CARD_DESC = {
     "CPU%": "İşlemci kullanımı", "GPU%": "GPU kullanımı",
     "RAM": "Bellek kullanımı", "VRAM": "GPU bellek dolu",
     "GHz": "CPU hızı", "C-W": "CPU gücü", "G-W": "GPU gücü",
-    "CFan": "CPU fan devri", "Pump": "Pompa 1 devri", "Pmp2": "Pompa 2 devri",
-    "GFan": "GPU fan devri",
+    "Rad": "Sıvı radyatör fanı", "Pmp": "Sıvı pompa devri",
+    "VFan": "VRM soğutucu fanı", "GFan": "GPU fan devri",
+    "A-Ar": "Kasa alt arka", "A-Or": "Kasa alt orta", "A-Ön": "Kasa alt ön",
+    "Ü-Ön": "Kasa üst ön", "Ü-Ar": "Kasa üst arka", "Egz": "Arka egzoz fanı",
     "İndir": "Ağ indirme", "Yükle": "Ağ yükleme",
 }
 
@@ -421,12 +425,12 @@ def draw(screen, d):
         ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",  (frq/5700.0)   if frq else 0, GREEN),
         ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W", (cpu_p/250.0)  if cpu_p else 0, GREEN),
         ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W", (gpu_p/350.0)  if gpu_p else 0, GREEN),
-        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm", (cfan/3000.0) if cfan else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm", (pump/3000.0) if pump else 0, GREEN),
-        ("Pmp2", f"{pump2:.0f}"  if pump2 else "0",              "rpm", (pump2/3000.0) if pump2 else 0, GREEN),
+        ("Rad",  f"{cfan:.0f}"   if cfan else "0",               "rpm", (cfan/3000.0) if cfan else 0, GREEN),
+        ("Pmp",  f"{pump:.0f}"   if pump else "0",               "rpm", (pump/3000.0) if pump else 0, GREEN),
+        ("VFan", f"{pump2:.0f}"  if pump2 else "0",              "rpm", (pump2/3000.0) if pump2 else 0, GREEN),
         ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm", (gfan/3000.0) if gfan else 0, GREEN),
     ] + [
-        (f"S{i+1}", f"{sf:.0f}" if sf else "0", "rpm", (sf/3000.0) if sf else 0, GREEN)
+        (SYSFAN_ETIKET[i], f"{sf:.0f}" if sf else "0", "rpm", (sf/3000.0) if sf else 0, GREEN)
         for i, sf in enumerate(sfans)
     ] + [
         ("İndir", nd_txt, nd_unit, nd_frac, GREEN),
@@ -465,10 +469,10 @@ def draw(screen, d):
                 screen.blit(us, (ccx - us.get_width()//2, card_top + int(card_h*0.46)))
             ls = lblf.render(lbl, True, (210, 220, 232))
             screen.blit(ls, (ccx - ls.get_width()//2, card_top + int(card_h*0.62)))
-            desc = _CARD_DESC.get(lbl) or ("Kasa fanı" if lbl.startswith("S") and lbl[1:].isdigit() else None)
+            desc = _CARD_DESC.get(lbl)
             if desc:
                 _dc = (60, 200, 210)   # camgobegi
-                descf = _font(max(13, int(_ref_w * 0.16)), bold=False)
+                descf = _font(max(10, int(_ref_w * 0.14)), bold=False)
                 words = desc.split()
                 # tek satirda sigmiyorsa iki satira bol (kelimeden)
                 one = descf.render(desc, True, _dc)

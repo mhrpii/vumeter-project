@@ -9,7 +9,10 @@ cd "$(dirname "$0")" || exit 1
 pkill -f native_proto_mac 2>/dev/null
 sleep 1
 
-PYBIN="$(command -v python3)"
+# numpy sistem python3'unde (3.9) kurulu; Homebrew python3 PATH'te
+# one gecerse numpy bulunamiyor. Bu yuzden yolu sabitliyoruz.
+PYBIN="/usr/bin/python3"
+[ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
 if [ -z "$PYBIN" ]; then
     echo "python3 bulunamadi. Once kur.command calistir."
     read -p "Enter ile kapat..."

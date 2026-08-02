@@ -768,11 +768,11 @@ def draw_sysmon(surf, fps):
         ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%",  (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
         ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%",  (ram/100.0)    if ram is not None else 0, GREEN),
         ("Yukle",nu_txt, nu_unit, nu_frac, GREEN),
-        ("CFan", f"{cfan:.0f}"   if cfan else "0",               "rpm",   (cfan/3000.0)  if cfan else 0, GREEN),
-        ("Pump", f"{pump:.0f}"   if pump else "0",               "rpm",   (pump/3000.0)  if pump else 0, GREEN),
-        ("Pump2", f"{pump2:.0f}" if pump2 else "0",             "rpm",   (pump2/3000.0) if pump2 else 0, GREEN),
+        ("Rad",  f"{cfan:.0f}"   if cfan else "0",               "rpm",   (cfan/3000.0)  if cfan else 0, GREEN),
+        ("Pmp",  f"{pump:.0f}"   if pump else "0",               "rpm",   (pump/3000.0)  if pump else 0, GREEN),
+        ("VRM",  f"{pump2:.0f}" if pump2 else "0",             "rpm",   (pump2/3000.0) if pump2 else 0, GREEN),
         ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm",   (gfan/3000.0)  if gfan else 0, GREEN),
-        ("S1",   f"{s1:.0f}"     if s1 else "0",                 "rpm",   (s1/3000.0)    if s1 else 0, GREEN),
+        ("A-Ar", f"{s1:.0f}"     if s1 else "0",                 "rpm",   (s1/3000.0)    if s1 else 0, GREEN),
     ]
     # SATIR 2 (14): saat/voltaj + guc + RAM(GB) + ag + fan blogu (sag yarim)
     bars_bot = [
@@ -785,11 +785,11 @@ def draw_sysmon(surf, fps):
         ("VRAM", f"{vram_u:.1f}" if vram_u is not None else "--","G",  vram_frac, GREEN),
         ("RAM",  f"{ram_gb:.1f}" if ram_gb is not None else "--","G",  (ram_gb/ram_tot) if (ram_gb and ram_tot) else 0, GREEN),
         ("Indir",nd_txt, nd_unit, nd_frac, GREEN),
-        ("S2",   f"{s2:.0f}"     if s2 else "0",                 "rpm",   (s2/3000.0)    if s2 else 0, GREEN),
-        ("S3",   f"{s3:.0f}"     if s3 else "0",                 "rpm",   (s3/3000.0)    if s3 else 0, GREEN),
-        ("S4",   f"{s4:.0f}"     if s4 else "0",                 "rpm",   (s4/3000.0)    if s4 else 0, GREEN),
-        ("S5",   f"{s5:.0f}"     if s5 else "0",                 "rpm",   (s5/3000.0)    if s5 else 0, GREEN),
-        ("S6",   f"{s6:.0f}"     if s6 else "0",                 "rpm",   (s6/3000.0)    if s6 else 0, GREEN),
+        ("A-Or", f"{s2:.0f}"     if s2 else "0",                 "rpm",   (s2/3000.0)    if s2 else 0, GREEN),
+        ("A-On", f"{s3:.0f}"     if s3 else "0",                 "rpm",   (s3/3000.0)    if s3 else 0, GREEN),
+        ("U-On", f"{s4:.0f}"     if s4 else "0",                 "rpm",   (s4/3000.0)    if s4 else 0, GREEN),
+        ("U-Ar", f"{s5:.0f}"     if s5 else "0",                 "rpm",   (s5/3000.0)    if s5 else 0, GREEN),
+        ("Egz",  f"{s6:.0f}"     if s6 else "0",                 "rpm",   (s6/3000.0)    if s6 else 0, GREEN),
     ]
     margin = 16
     vfont = _sm_font(30); ufont = _sm_font(15); lfont = _sm_font(17)

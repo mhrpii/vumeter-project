@@ -25,16 +25,17 @@ echo "  VU METER MASAUSTU - Mac Kurulum"
 echo "=================================================="
 
 # --- 1) Python3 kontrol ---
-if ! command -v python3 >/dev/null 2>&1; then
+PYBIN="/usr/bin/python3"
+if ! [ -x "$PYBIN" ]; then
     echo "[!] python3 bulunamadi. Xcode Command Line Tools kurun:"
     echo "    xcode-select --install"
     read -p "Enter..."; exit 1
 fi
-echo "[OK] python3: $(python3 --version)"
+echo "[OK] python3: $("$PYBIN" --version)"
 
 # --- 2) Python paketleri ---
 echo "[*] Python paketleri kontrol ediliyor (pygame, numpy, PyQt5, psutil)..."
-python3 -m pip install --quiet --user pygame numpy PyQt5 psutil Pillow 2>/dev/null
+"$PYBIN" -m pip install --quiet --user pygame numpy PyQt5 psutil Pillow 2>/dev/null
 echo "[OK] paketler hazir"
 
 # --- 3) cava kontrol (mac_deps'ten offline kurulum destekli) ---

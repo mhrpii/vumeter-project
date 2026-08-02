@@ -59,3 +59,13 @@ vu_launcher_desktop
 cava
 control_window.py.bak
 AppIcon.icns
+
+# yama betikleri ve yedekleri
+*.pybak
+*.etiketbak
+*.aciklamabak
+*.isimbak
+*.sarmabak
+fan_etiket.py
+fan_aciklama.py
+aciklama_sarma.py

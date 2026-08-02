@@ -101,7 +101,10 @@ echo "    Loopback yoksa BlackHole gibi sanal aygit gerekir (README)."
 # --- 4) Python kutuphaneleri ---
 echo ""
 echo "[*] Python kutuphaneleri kuruluyor..."
-PYBIN="$(command -v python3)"
+# numpy sistem python3'unde (3.9); Homebrew python3 PATH'te one
+# gecerse paketler yanlis yere kurulur. Yolu sabitliyoruz.
+PYBIN="/usr/bin/python3"
+[ -x "$PYBIN" ] || PYBIN="$(command -v python3)"
 [ -z "$PYBIN" ] && { echo "[!] python3 yok: xcode-select --install"; read -p "Enter..."; }
 "$PYBIN" -m pip install --user pygame PyQt5 numpy psutil pyusb Pillow 2>&1 | tail -2
 echo "[OK] Python kutuphaneleri hazir."
