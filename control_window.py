@@ -73,6 +73,26 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
     MODES = ["Spektrum", "LED Spektrum", "VU Metre", "Sistem Monitoru", "Olcum Paneli"]
 
     w = QWidget(); w.setObjectName("root")
+
+    def _konumlandir():
+        """Pencereyi tray'in bulundugu kosede ac.
+        macOS'ta tray sag ustte, Linux/KDE'de genelde sol altta."""
+        try:
+            from PyQt5.QtWidgets import QApplication as _QA
+            import sys as _s
+            scr = _QA.primaryScreen().availableGeometry()
+            w.adjustSize()
+            gw, gh = w.width(), w.height()
+            kenar = 12
+            x = scr.right() - gw - kenar
+            if _s.platform == "darwin":
+                y = scr.top() + kenar          # macOS: menu cubugu ustte
+            else:
+                y = scr.bottom() - gh - kenar  # Linux: gorev cubugu altta
+            w.move(max(scr.left(), x), max(scr.top(), y))
+        except Exception:
+            pass
+
     w.setWindowTitle("Vumeter LCD - Kontrol")
     w.setStyleSheet(QSS)
     w.setMinimumWidth(300)
@@ -280,7 +300,7 @@ def build_control_window(state, color_themes, led_themes, vu_dial_count,
         except Exception:
             pass
 
-    auto_cb = QCheckBox("Mac açılınca otomatik başlat")
+    auto_cb = QCheckBox("PC açılınca otomatik başlat")
     auto_cb.setChecked(_autostart_aktif())
     def _on_auto(state):
         if state:

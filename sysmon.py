@@ -20,6 +20,27 @@ except Exception:
     psutil = None
 
 _HWMON = "/sys/class/hwmon"
+
+_RAPL_LAST = {"energy": None, "ts": None}
+
+def _read_rapl_power():
+    """Intel RAPL: paket enerji sayacindan anlik guc (W) hesapla."""
+    import time as _t
+    p = "/sys/class/powercap/intel-rapl:0/energy_uj"
+    v = _read_int(p)
+    if v is None:
+        return None
+    now = _t.time()
+    prev_e, prev_t = _RAPL_LAST["energy"], _RAPL_LAST["ts"]
+    _RAPL_LAST["energy"], _RAPL_LAST["ts"] = v, now
+    if prev_e is None or prev_t is None or now <= prev_t:
+        return None
+    d = v - prev_e
+    if d < 0:      # sayac dondu
+        return None
+    return (d / 1000000.0) / (now - prev_t)
+
+
 _RAPL = "/sys/class/powercap/intel-rapl:0/energy_uj"
 
 
@@ -69,7 +90,9 @@ class SysMonitor:
             "gpu_power": None, "gpu_usage": None,
             "gpu_vram_used": None, "gpu_vram_total": None, "gpu_fan_rpm": None,
             "mb_system": None, "mb_vrm": None, "mb_pch": None,
-            "fan_cpu": None, "fan_pump": None,
+            "fan_cpu": None, "fan_pump": None, "fan_pump2": None,
+            "gpu_core_clock": None, "gpu_mem_clock": None,
+            "cpu_voltage": None, "disks": None, "disk_usage": None, "ipg": None,
             "fan_sys1": None, "fan_sys2": None, "fan_sys3": None,
             "fan_sys4": None, "fan_sys5": None, "fan_sys6": None,
             "net_down": None, "net_up": None,
@@ -133,6 +156,11 @@ class SysMonitor:
                 v = _read_int(p)
                 if v:
                     self.data[key] = v / 1000.0
+        # GPU saatleri (freq1=cekirdek, freq2=bellek; Hz -> MHz)
+        for key, f in (("gpu_core_clock", "freq1_input"), ("gpu_mem_clock", "freq2_input")):
+            v = _read_int(f"{hw}/{f}")
+            if v:
+                self.data[key] = v / 1000000.0
         # guc (power1_average, microwatt)
         pw = _read_int(f"{hw}/power1_average") or _read_int(f"{hw}/power1_input")
         if pw:
@@ -153,6 +181,108 @@ class SysMonitor:
         if vt is not None:
             self.data["gpu_vram_total"] = vt / (1024**3)
 
+
+    # ---------- Diskler (nvme + drivetemp hwmon, psutil doluluk) ----------
+    def _read_disks(self):
+        """disks: [(ad, sicaklik, tip)], disk_usage: {ad: (yuzde, GB)}"""
+        import glob as _g
+        out = []
+        for hp in _g.glob(f"{_HWMON}/hwmon*"):
+            try:
+                with open(f"{hp}/name") as f:
+                    nm = f.read().strip()
+            except Exception:
+                continue
+            if nm not in ("nvme", "drivetemp"):
+                continue
+            t = _read_int(f"{hp}/temp1_input")
+            if not t:
+                continue
+            # model adi: device/model ya da device/device/model
+            model = None
+            for mp in (f"{hp}/device/model", f"{hp}/device/device/model"):
+                try:
+                    with open(mp) as f:
+                        model = f.read().strip()
+                        break
+                except Exception:
+                    pass
+            if not model:
+                model = nm
+            out.append((model, t / 1000.0, "nvme" if nm == "nvme" else "sata"))
+        if out:
+            self.data["disks"] = out
+
+        # doluluk: bagli birimleri DISK MODELINE esle (LCD model adiyla ariyor)
+        try:
+            import psutil as _ps, os as _os
+            usage = {}
+            for part in _ps.disk_partitions(all=False):
+                try:
+                    u = _ps.disk_usage(part.mountpoint)
+                except Exception:
+                    continue
+                base = _os.path.basename(part.device)
+                if base.startswith("nvme"):
+                    base = base.split("p")[0]
+                else:
+                    base = base.rstrip("0123456789")
+                model = None
+                for mp in (f"/sys/block/{base}/device/model",
+                           f"/sys/block/{base}/device/device/model"):
+                    try:
+                        with open(mp) as _f:
+                            model = _f.read().strip()
+                            break
+                    except Exception:
+                        pass
+                key = model or part.mountpoint
+                prev = usage.get(key)
+                val = (u.percent, u.total / (1000**3))
+                if prev is None or val[1] > prev[1]:
+                    usage[key] = val
+            if usage:
+                self.data["disk_usage"] = usage
+        except Exception:
+            pass
+
+
+    # ---------- Cekirdek haritasi (coretemp + cpufreq) -> "ipg" yapisi ----------
+    def _read_cores_map(self):
+        """LCD cekirdek sayfasi icin: {"cores": [(no, MHz, C)], "pkg_temp", "pkg_power", "num_cores"}"""
+        import glob as _g, re as _re
+        cores = []
+        # coretemp: tempN_label = "Core 0" -> tempN_input
+        hw = self._hw_core
+        if hw:
+            for lp in sorted(_g.glob(f"{hw}/temp*_label")):
+                try:
+                    with open(lp) as f:
+                        lab = f.read().strip()
+                except Exception:
+                    continue
+                m = _re.match(r"Core (\d+)", lab)
+                if not m:
+                    continue
+                idx = int(m.group(1))
+                t = _read_int(lp.replace("_label", "_input"))
+                if t is None:
+                    continue
+                # frekans: ayni numarali cpu (yaklasik eslesme)
+                fr = _read_int(f"/sys/devices/system/cpu/cpu{idx}/cpufreq/scaling_cur_freq")
+                cores.append((idx, (fr / 1000.0) if fr else 0.0, t / 1000.0))
+        if cores:
+            cores.sort(key=lambda c: c[0])
+            # coretemp fiziksel numaralari seyrek olabiliyor (0,4,8,28,44...).
+            # LCD'de okunakli olsun diye 1'den baslayan sirali numara ver.
+            cores = [(i, f, t) for i, (_, f, t) in enumerate(cores)]
+            self.data["ipg"] = {
+                "cores": cores,
+                "pkg_temp": self.data.get("cpu_pkg"),
+                "pkg_power": self.data.get("cpu_power"),
+                "num_cores": len(cores),
+            }
+
     # ---------- Anakart + fanlar (nct6687) ----------
     def _read_motherboard(self):
         nl = self._nct_labels
@@ -162,7 +292,20 @@ class SysMonitor:
                 v = _read_int(p)
                 if v:
                     self.data[key] = v / 1000.0
+        # CPU Vcore (etiketle bul: inN_label -> "CPU Vcore")
+        try:
+            import glob as _g
+            for lp in _g.glob(f"{self._hw_nct}/in*_label"):
+                with open(lp) as _f:
+                    if "Vcore" in _f.read():
+                        v = _read_int(lp.replace ("_label", "_input"))
+                        if v:
+                            self.data["cpu_voltage"] = v / 1000.0
+                        break
+        except Exception:
+            pass
         for key, label in (("fan_cpu", "CPU Fan"), ("fan_pump", "Pump Fan"),
+                           ("fan_pump2", "Pump Fan #2"),
                            ("fan_sys1", "System Fan #1"), ("fan_sys2", "System Fan #2"),
                            ("fan_sys3", "System Fan #3"), ("fan_sys4", "System Fan #4"),
                            ("fan_sys5", "System Fan #5"), ("fan_sys6", "System Fan #6")):
@@ -216,6 +359,8 @@ class SysMonitor:
             with self._lock:
                 self._read_cpu_temp()
                 self._read_cpu_power()
+                self._read_disks()
+                self._read_cores_map()
                 self._read_gpu()
                 self._read_motherboard()
                 self._read_psutil()
