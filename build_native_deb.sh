@@ -23,7 +23,8 @@ cp "$SRC/sysmon.py"         "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg.png"         "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg2.png"        "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg3.png"        "$ROOT/opt/vumeter-lcd-native/"
-cp "$SRC/../linux_NCT6687D_9FAN_KURULUM.md" "$ROOT/opt/vumeter-lcd-native/NCT6687D_9FAN_KURULUM.md" 2>/dev/null || true
+cp "$SRC/Linux_NCT6687D_9FAN_KURULUM.md" "$ROOT/opt/vumeter-lcd-native/" 2>/dev/null || true
+cp "$SRC/DEBIAN_SIFIR_KURULUM.md" "$ROOT/opt/vumeter-lcd-native/" 2>/dev/null || true
 
 # dosya izinleri (sysmon.py bazen -rw------- geliyor -> import PermissionError)
 chmod 644 "$ROOT/opt/vumeter-lcd-native/"*.py "$ROOT/opt/vumeter-lcd-native/"*.png

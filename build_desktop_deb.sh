@@ -17,7 +17,8 @@ mkdir -p "$ROOT/DEBIAN" \
 for f in vumeter_linux.py control_window_desktop.py sysmon.py sysmon_window.py vu_bg.png vu_bg2.png vu_bg3.png; do
     cp "$SRC/$f" "$ROOT/opt/vumeter-desktop/" || { echo "EKSIK DOSYA: $f"; exit 1; }
 done
-cp "$SRC/../linux_NCT6687D_9FAN_KURULUM.md" "$ROOT/opt/vumeter-desktop/NCT6687D_9FAN_KURULUM.md" 2>/dev/null || true
+cp "$SRC/Linux_NCT6687D_9FAN_KURULUM.md" "$ROOT/opt/vumeter-desktop/" 2>/dev/null || true
+cp "$SRC/DEBIAN_SIFIR_KURULUM.md" "$ROOT/opt/vumeter-desktop/" 2>/dev/null || true
 
 # ---- 3) DEBIAN/control ----
 cat > "$ROOT/DEBIAN/control" << 'EOF'
