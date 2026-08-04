@@ -124,20 +124,23 @@ method = pulse
 source = {src}
 [output]
 method = raw
-raw_target = /dev/stdout
 data_format = ascii
 ascii_max_range = 255
+bit_format = 8bit
 """
     with open(conf_path, "w") as f:
         f.write(txt)
 
 
 def find_cava():
+    # Linux'ta once SISTEM cava'si: proje klasorundeki "cava" dosyasi
+    # macOS ikilisi olabiliyor (calistirilabilir gorunur ama Linux'ta calismaz).
     candidates = [
-        get_resource_path("cava"),
-        "/opt/homebrew/bin/cava",
-        "/usr/local/bin/cava",
         shutil.which("cava"),
+        "/usr/bin/cava",
+        "/usr/local/bin/cava",
+        "/opt/homebrew/bin/cava",
+        get_resource_path("cava"),
     ]
     for c in candidates:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
