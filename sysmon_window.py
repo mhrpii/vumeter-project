@@ -221,15 +221,26 @@ def draw_sysmon_disks(surf, disks, usage=None):
             gcol = _sm_grad_rgb(frac)
             draw_card_gauge_m(surf, gcx, gcy, gr, frac, gcol)
             # sicaklik rakami
-            vf = _font(int(gr * 0.9))
+            # daireye SIGACAK en buyuk font (0.9 tasiyordu)
+            _vsize = int(gr * 0.85)
+            vf = _font(_vsize)
             vs = vf.render(f"{temp}", True, gcol)
+            while vs.get_width() > gr * 1.45 and _vsize > 10:
+                _vsize -= 1
+                vf = _font(_vsize)
+                vs = vf.render(f"{temp}", True, gcol)
             vx = gcx - vs.get_width()//2
             vy = gcy - vs.get_height()//2
             surf.blit(vs, (vx, vy))
             # C birimi: rakamin SAG USTUNE (derece isareti gibi - LCD ile ayni)
-            uf = _font(max(10, int(gr * 0.32)))
+            # °C isareti: rakamin sag ustune, DAIRE ICINDE kalacak sekilde
+            uf = _font(max(9, int(gr * 0.26)))
             us = uf.render("°C", True, (170, 182, 196))
-            surf.blit(us, (vx + vs.get_width() + 2, vy - 2))
+            _ux = vx + vs.get_width() + 1
+            _uy = vy + int(vs.get_height() * 0.10)
+            if _ux + us.get_width() > gcx + gr - 2:
+                _ux = gcx + gr - us.get_width() - 2
+            surf.blit(us, (_ux, _uy))
             # disk adi - kisa ve okunakli isim
             _u = usage.get(model)
             pct = (_u[0] if isinstance(_u, tuple) else (_u or 0.0))
