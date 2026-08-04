@@ -15,7 +15,13 @@ import time
 if "--sysmon" in sys.argv:
     try:
         import sysmon_window
-        sysmon_window.main()
+        _sp = 0
+        if "--page" in sys.argv:
+            try:
+                _sp = int(sys.argv[sys.argv.index("--page") + 1])
+            except Exception:
+                _sp = 0
+        sysmon_window.main(_sp)
     except Exception as _e:
         print("sysmon_window hata:", _e)
     sys.exit(0)
@@ -933,12 +939,14 @@ def setup_tray():
         menu.addSeparator()
 
         # Sistem Monitoru (ayri pencere)
-        def open_sysmon():
+        def open_sysmon(page=0):
+            """page: 0=Sensorler, 1=Disk Isilari, 2=Cekirdek Isilari"""
             try:
+                _pg = ["--sysmon", "--page", str(int(page or 0))]
                 if getattr(sys, "frozen", False):
-                    subprocess.Popen([sys.executable, "--sysmon"])
+                    subprocess.Popen([sys.executable] + _pg)
                 else:
-                    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--sysmon"])
+                    subprocess.Popen([sys.executable, os.path.abspath(__file__)] + _pg)
             except Exception:
                 pass
         smon = QAction("Sistem Monitoru", menu)

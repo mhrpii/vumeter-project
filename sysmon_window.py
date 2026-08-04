@@ -3,6 +3,12 @@ LCD surumundeki KART tasarimi + arka plan alan grafigi (son ~12sn); sysmon.py'de
 gercek donanim verisi okur."""
 import os
 import sys
+
+# Wayland'da SDL pencere konumu belirleyemiyor -> pygame IMPORT EDILMEDEN ONCE
+# XWayland'a gec ki pencere sag alta acilabilsin (Qt tarafi zaten yapabiliyor).
+if sys.platform != "darwin" and os.environ.get("XDG_SESSION_TYPE") == "wayland":
+    os.environ.setdefault("SDL_VIDEODRIVER", "x11")
+
 import pygame
 import math
 from collections import deque as _deque
@@ -509,6 +515,20 @@ def main(start_page=0):
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     pygame.display.init()
     pygame.font.init()
+    # Pencereyi tray'in bulundugu koseye ac (LCD kontrol penceresiyle tutarli):
+    # Linux -> sag alt, macOS -> sag ust. SDL konumu set_mode'dan ONCE okur.
+    try:
+        import os as _os3, sys as _sys3
+        _info = pygame.display.Info()
+        _sw, _sh = _info.current_w, _info.current_h
+        _x = max(0, _sw - WIDTH - 20)
+        _y = 40 if _sys3.platform == "darwin" else max(0, _sh - HEIGHT - 80)
+        _os3.environ["SDL_VIDEO_WINDOW_POS"] = f"{_x},{_y}"
+        # Wayland pencere konumu belirlemeye izin vermiyor -> XWayland kullan
+        if _sys3.platform != "darwin" and _os3.environ.get("XDG_SESSION_TYPE") == "wayland":
+            _os3.environ["SDL_VIDEODRIVER"] = "x11"
+    except Exception:
+        pass
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Sistem Monitoru")
     clock = pygame.time.Clock()
