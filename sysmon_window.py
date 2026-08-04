@@ -183,7 +183,7 @@ def draw_sysmon_disks(surf, disks, usage=None):
     """SAYFA 2: 9 diskin sicakliklari (ust: NVMe, alt: SATA)."""
     surf.fill((8, 10, 8))
     WIDTH, HEIGHT = surf.get_size()
-    SCALE = max(0.35, WIDTH / 1920.0)   # LCD (1920) referansli olcek
+    SCALE = max(0.35, min(1.0, WIDTH / 1920.0))   # LCD referansli; 1.0 ustune cikmasin
     usage = usage or {}
 
     def temp_color(t):
@@ -293,7 +293,7 @@ def draw_sysmon_cores(surf, ipg):
     Her cekirdek renkli kutu: sicakliga gore renk + frekans/sicaklik yazi."""
     surf.fill((8, 10, 8))
     WIDTH, HEIGHT = surf.get_size()
-    SCALE = max(0.35, WIDTH / 1920.0)   # LCD (1920) referansli olcek
+    SCALE = max(0.35, min(1.0, WIDTH / 1920.0))   # LCD referansli; 1.0 ustune cikmasin
     cores = ipg.get("cores") or []
 
     # baslik SAG UST
@@ -404,37 +404,34 @@ def draw(screen, d):
         ("Çkrdk",f"{cores:.0f}"  if cores is not None else "--", "C", (cores/100.0)  if cores else 0, col(cores)),
         ("GPU",  f"{gpu_e:.0f}"  if gpu_e is not None else "--", "C", (gpu_e/100.0)  if gpu_e else 0, col(gpu_e)),
         ("Jnc",  f"{gpu_j:.0f}"  if gpu_j is not None else "--", "C", (gpu_j/110.0)  if gpu_j else 0, col(gpu_j)),
-        (("GBellek" if sys.platform == "darwin" else "VMem"),
-         (f"{d.get('gpu_mem_clock'):.0f}" if (sys.platform == "darwin" and d.get('gpu_mem_clock')) else (f"{gpu_m:.0f}" if gpu_m is not None else "--")),
-         ("MHz" if sys.platform == "darwin" else "C"),
-         ((d.get('gpu_mem_clock', 0) or 0)/2000.0 if sys.platform == "darwin" else ((gpu_m/100.0) if gpu_m else 0)),
-         (GREEN if sys.platform == "darwin" else col(gpu_m))),
-        (("VCore" if sys.platform == "darwin" else "VRM"),
-         (f"{d.get('cpu_voltage'):.2f}" if (sys.platform == "darwin" and d.get('cpu_voltage')) else (f"{vrm:.0f}" if vrm is not None else "--")),
-         ("V" if sys.platform == "darwin" else "C"),
-         ((d.get('cpu_voltage', 0) or 0)/1.5 if sys.platform == "darwin" else ((vrm/100.0) if vrm else 0)),
-         (GREEN if sys.platform == "darwin" else col(vrm))),
         ("PCH",  f"{pch:.0f}"    if pch is not None else "--",   "C", (pch/90.0)     if pch else 0,   col(pch)),
-        ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C", (mbsys/80.0)   if mbsys else 0, col(mbsys)),
         ("CPU%", f"{use:.0f}"    if use is not None else "--",   "%", (use/100.0)    if use is not None else 0, GREEN),
         ("GPU%", f"{gpu_u:.0f}"  if gpu_u is not None else "--", "%", (gpu_u/100.0)  if gpu_u is not None else 0, GREEN),
         ("RAM",  f"{ram:.0f}"    if ram is not None else "--",   "%", (ram/100.0)    if ram is not None else 0, GREEN),
-        ("VRAM", vram_txt,                                       "GB", vram_frac, GREEN),
-    ]
-    bars_bot = [
-        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "",  (frq/5700.0)   if frq else 0, GREEN),
-        ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W", (cpu_p/250.0)  if cpu_p else 0, GREEN),
-        ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W", (gpu_p/350.0)  if gpu_p else 0, GREEN),
+        ("Yükle", nu_txt, nu_unit, nu_frac, GREEN),
+        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm", (gfan/3000.0) if gfan else 0, GREEN),
         ("Rad",  f"{cfan:.0f}"   if cfan else "0",               "rpm", (cfan/3000.0) if cfan else 0, GREEN),
+        (SYSFAN_ETIKET[5], f"{sfans[5]:.0f}" if (len(sfans) > 5 and sfans[5]) else "0", "rpm",
+         (sfans[5]/3000.0) if (len(sfans) > 5 and sfans[5]) else 0, GREEN),
         ("Pmp",  f"{pump:.0f}"   if pump else "0",               "rpm", (pump/3000.0) if pump else 0, GREEN),
         ("VFan", f"{pump2:.0f}"  if pump2 else "0",              "rpm", (pump2/3000.0) if pump2 else 0, GREEN),
-        ("GFan", f"{gfan:.0f}"   if gfan else "0",               "rpm", (gfan/3000.0) if gfan else 0, GREEN),
-    ] + [
-        (SYSFAN_ETIKET[i], f"{sf:.0f}" if sf else "0", "rpm", (sf/3000.0) if sf else 0, GREEN)
-        for i, sf in enumerate(sfans)
-    ] + [
+    ]
+    bars_bot = [
+        ("Sys",  f"{mbsys:.0f}"  if mbsys is not None else "--", "C", (mbsys/80.0)   if mbsys else 0, col(mbsys)),
+        ("VRM",  f"{vrm:.0f}"    if vrm is not None else "--",   "C", (vrm/100.0)    if vrm else 0, col(vrm)),
+        ("GHz",  f"{frq/1000:.1f}" if frq else "--",             "GHz", (frq/5700.0) if frq else 0, GREEN),
+        ("VCore", (f"{d.get('cpu_voltage'):.2f}" if d.get('cpu_voltage') else "--"), "V",
+                  ((d.get('cpu_voltage', 0) or 0) / 1.5), GREEN),
+        ("C-W",  f"{cpu_p:.0f}"  if cpu_p is not None else "--", "W", (cpu_p/250.0)  if cpu_p else 0, GREEN),
+        ("G-W",  f"{gpu_p:.0f}"  if gpu_p is not None else "--", "W", (gpu_p/350.0)  if gpu_p else 0, GREEN),
+        ("VRAM", vram_txt,                                       "GB", vram_frac, GREEN),
+        ("RAM",  (f"{d.get('ram_used'):.1f}" if d.get('ram_used') else "--"), "GB",
+                 ((d.get('ram_used', 0) or 0) / (d.get('ram_total') or 1)), GREEN),
         ("İndir", nd_txt, nd_unit, nd_frac, GREEN),
-        ("Yükle", nu_txt, nu_unit, nu_frac, GREEN),
+    ] + [
+        (SYSFAN_ETIKET[i], f"{sfans[i]:.0f}" if (len(sfans) > i and sfans[i]) else "0", "rpm",
+         (sfans[i]/3000.0) if (len(sfans) > i and sfans[i]) else 0, GREEN)
+        for i in (4, 3, 2, 1, 0)   # sagdan: A-Ar, A-Or, A-Ön, Ü-Ön, Ü-Ar
     ]
 
     margin = 20
@@ -448,6 +445,9 @@ def draw(screen, d):
         card_h = (row_bottom - row_top) - 16
         _max_n = 14
         _ref_w = (W - 2*margin - (_max_n-1)*gap) // _max_n
+        # 4K ekranda pencere genisleyince fontlar devlesiyordu:
+        # LCD referansini (1920 -> ~120px kart) asma
+        _ref_w = min(_ref_w, 130)
         cardf = _font(int(_ref_w * 0.34))
         unitf = _font(max(14, int(_ref_w * 0.17)), bold=False)
         lblf = _font(max(15, int(_ref_w * 0.18)))
