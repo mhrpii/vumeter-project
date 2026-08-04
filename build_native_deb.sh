@@ -3,9 +3,9 @@
 # v3.0.0: DOGRUDAN USB (trcc / HTTP API / PNG / tema klasoru YOK)
 set -e
 
-VER="3.0.0"
+VER="4.0.0"
 ROOT="$HOME/vumeter-deb-build/vumeter-lcd-native_${VER}"
-SRC="$HOME/İndirilenler/files"
+SRC="$(cd "$(dirname "$0")" && pwd)"
 
 echo "== Build agaci temizle + olustur =="
 rm -rf "$ROOT"
@@ -16,13 +16,14 @@ mkdir -p "$ROOT/etc/xdg/autostart"
 mkdir -p "$ROOT/DEBIAN"
 
 echo "== Dosyalari kopyala =="
-cp "$SRC/native_proto.py"   "$ROOT/opt/vumeter-lcd-native/"
+cp "$SRC/native_proto_linux.py" "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/trcc_direct.py"    "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/control_window.py" "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/sysmon.py"         "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg.png"         "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg2.png"        "$ROOT/opt/vumeter-lcd-native/"
 cp "$SRC/vu_bg3.png"        "$ROOT/opt/vumeter-lcd-native/"
+cp "$SRC/../linux_NCT6687D_9FAN_KURULUM.md" "$ROOT/opt/vumeter-lcd-native/NCT6687D_9FAN_KURULUM.md" 2>/dev/null || true
 
 # dosya izinleri (sysmon.py bazen -rw------- geliyor -> import PermissionError)
 chmod 644 "$ROOT/opt/vumeter-lcd-native/"*.py "$ROOT/opt/vumeter-lcd-native/"*.png
@@ -30,11 +31,14 @@ chmod 644 "$ROOT/opt/vumeter-lcd-native/"*.py "$ROOT/opt/vumeter-lcd-native/"*.p
 echo "== control =="
 cat > "$ROOT/DEBIAN/control" << 'EOF'
 Package: vumeter-lcd-native
-Version: 3.0.0
+Version: 4.0.0
 Section: sound
 Priority: optional
 Architecture: all
-Depends: python3, python3-pygame, python3-numpy, python3-psutil, python3-pyqt5, python3-usb, cava, lm-sensors
+Depends: python3, python3-pygame, python3-numpy, python3-psutil, python3-pyqt5,
+ python3-usb, python3-pil, cava, lm-sensors, pipewire-pulse | pulseaudio-utils,
+ libusb-1.0-0
+Recommends: dkms, build-essential, exfatprogs, hfsprogs, ntfs-3g
 Maintainer: Mahir
 Description: Thermalright LCD Ses Gorsellestirme (Dogrudan USB)
  Panele DOGRUDAN USB ile yazar - trcc, HTTP API, PNG ve tema klasoru YOK.
@@ -49,7 +53,7 @@ echo "== launcher (/usr/bin/vumeter-lcd-native) =="
 cat > "$ROOT/usr/bin/vumeter-lcd-native" << 'EOF'
 #!/bin/bash
 cd /opt/vumeter-lcd-native
-exec python3 /opt/vumeter-lcd-native/native_proto.py "$@"
+exec python3 /opt/vumeter-lcd-native/native_proto_linux.py "$@"
 EOF
 chmod +x "$ROOT/usr/bin/vumeter-lcd-native"
 
