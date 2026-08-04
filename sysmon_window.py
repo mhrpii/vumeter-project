@@ -217,7 +217,10 @@ def draw_sysmon_disks(surf, disks, usage=None):
             pygame.draw.rect(surf, (35, 43, 54), (cx0, row_top, card_w, row_h), 1, border_radius=12)
             # gauge halka
             gcx = ccx; gcy = row_top + int(row_h * 0.40)
-            gr = int(min(card_w, row_h) * 0.38)   # bar ile teget olmasin
+            # NVMe (5) ve SATA (4) satirlari ayni punto olsun diye yaricap
+            # sabit 5 kart referansiyla hesaplanir (kart sayisina gore degismez)
+            _ref_cw = (WIDTH - 2*margin - 4*gap) // 5
+            gr = int(min(_ref_cw, row_h) * 0.38)   # bar ile teget olmasin
             gcol = _sm_grad_rgb(frac)
             draw_card_gauge_m(surf, gcx, gcy, gr, frac, gcol)
             # sicaklik rakami

@@ -209,7 +209,7 @@ class SysMonitor:
                     pass
             if not model:
                 model = nm
-            out.append((model, t / 1000.0, "nvme" if nm == "nvme" else "sata"))
+            out.append((model, round(t / 1000.0), "nvme" if nm == "nvme" else "sata"))
         if out:
             self.data["disks"] = out
 
