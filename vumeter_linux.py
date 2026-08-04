@@ -1039,6 +1039,31 @@ def setup_tray():
                 cw = _ctrl_win[0]
                 if hasattr(cw, "_refresh"): cw._refresh()
                 cw.show(); cw.raise_(); cw.activateWindow()
+                # Pencereyi tray'in yanina tasi (LCD surumuyle tutarli):
+                # Linux -> sag alt (gorev cubugu), macOS -> sag ust (menu cubugu)
+                try:
+                    from PyQt5.QtWidgets import QApplication as _QA5
+                    _scr = _QA5.primaryScreen().availableGeometry()
+                    _geo = tray.geometry()
+                    cw.adjustSize()
+                    _gw, _gh = cw.width(), cw.height()
+                    if _geo.width() > 0:
+                        _x5 = _geo.right() - _gw - 40
+                        if _geo.top() > _scr.center().y():
+                            _y5 = _geo.top() - _gh - 6
+                        else:
+                            _y5 = _geo.bottom() + 6
+                    else:
+                        # tray konumu okunamiyorsa (Wayland): sag alt,
+                        # pencere genisligi kadar daha sola (ikona yaklassin)
+                        _x5 = _scr.right() - (_gw * 2) - 12
+                        _y5 = (_scr.top() + 30 if sys.platform == "darwin"
+                               else _scr.bottom() - _gh - 12)
+                    _x5 = max(_scr.left() + 6, min(_x5, _scr.right() - _gw - 6))
+                    _y5 = max(_scr.top() + 6, min(_y5, _scr.bottom() - _gh - 6))
+                    cw.move(_x5, _y5)
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"Kontrol penceresi hatasi: {e}")
 
